@@ -543,7 +543,7 @@ router.post("/:slug/submit", (req, res) => {
   });
 });
 
-// Assign assessment to a student
+// Assign assessment to a student (always unlocked)
 router.post("/assign/:studentId", async (req, res) => {
   try {
     const { studentId } = req.params;
@@ -567,9 +567,9 @@ router.post("/assign/:studentId", async (req, res) => {
       return res.status(400).json({ error: "Assessment already assigned" });
     }
 
-    // Assign as locked by default
+    // ✅ Assign as unlocked by default (forever)
     if (!student.assessments) student.assessments = [];
-    student.assessments.push({ assessmentId: assessment.id, status: "locked" });
+    student.assessments.push({ assessmentId: assessment.id, status: "unlocked" });
     await student.save();
 
     res.json({ message: "Assessment assigned successfully", assessments: student.assessments });
@@ -578,6 +578,7 @@ router.post("/assign/:studentId", async (req, res) => {
   }
 });
 
+// (Optional) Unlock route → now redundant, but kept for compatibility
 router.put("/unlock/:studentId/:assessmentId", async (req, res) => {
   try {
     const { studentId, assessmentId } = req.params;
@@ -595,18 +596,16 @@ router.put("/unlock/:studentId/:assessmentId", async (req, res) => {
       return res.status(404).json({ error: "Assessment not assigned to this student" });
     }
 
-    if (assessment.status === "unlocked") {
-      return res.status(400).json({ error: "Assessment already unlocked" });
-    }
-
+    // ✅ Already always unlocked, so just return success
     assessment.status = "unlocked";
     await student.save();
 
-    res.json({ message: "Assessment unlocked successfully", assessments: student.assessments });
+    res.json({ message: "Assessment is already unlocked", assessments: student.assessments });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 // Get assigned assessments of a student
 router.get("/my/:studentId", async (req, res) => {
