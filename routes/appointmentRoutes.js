@@ -1,20 +1,23 @@
 import express from "express";
 import Appointment from "../models/Appointment.js";
-import Doctor from "../models/Doctor.js"; // Assuming Doctor model is imported
+import Doctor from "../models/Doctor.js";
+import User from "../models/User.js"; // For student info
 import jwt from "jsonwebtoken";
+import nodemailer from "nodemailer";
 
 const router = express.Router();
 
-// Auth middleware
+// ======================
+// Auth Middleware
+// ======================
 const authMiddleware = (req, res, next) => {
-  console.log("start middleware");
   const token = req.headers.authorization?.split(" ")[1];
   if (!token) return res.status(401).json({ error: "No token provided" });
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.userId = decoded.id;
-    req.userRole = decoded.role; // role included in token
+    req.userRole = decoded.role;
     next();
   } catch (err) {
     return res.status(403).json({ error: "Invalid or expired token" });
@@ -22,13 +25,36 @@ const authMiddleware = (req, res, next) => {
 };
 
 // ======================
-// Admin / Student Routes
+// Helper: Send Emails
 // ======================
+const sendEmail = async (to, subject, text) => {
+  try {
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: process.env.SMTP_PORT,
+      secure: process.env.SMTP_SECURE === "true",
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    });
 
-// Book a new appointment (for students)
+    await transporter.sendMail({
+      from: process.env.SMTP_USER,
+      to,
+      subject,
+      text,
+    });
+  } catch (err) {
+    console.error("Failed to send email:", err);
+  }
+};
+
+// ======================
+// Book a new appointment (first-come-first-serve, auto-approved)
+// ======================
 router.post("/", authMiddleware, async (req, res) => {
   try {
-    // Restrict to students
     if (req.userRole !== "student") {
       return res.status(403).json({ error: "Access denied: students only" });
     }
@@ -39,12 +65,34 @@ router.post("/", authMiddleware, async (req, res) => {
       return res.status(400).json({ error: "Doctor ID, slotStart and slotEnd are required" });
     }
 
-    // Check if doctor exists and is available
-    const doctor = await Doctor.findById(doctorId);
-    if (!doctor || doctor.isAvailable !== "available") {
-      return res.status(400).json({ error: "Doctor is not available for booking" });
-    }
+   // Check doctor availability
+const doctor = await Doctor.findById(doctorId);
+if (!doctor || doctor.isAvailable !== "available") {
+  return res.status(400).json({ error: "Doctor is not available for booking" });
+}
 
+// Convert slotStart and slotEnd to local date and time strings
+const slotStartDate = new Date(slotStart);
+const slotEndDate = new Date(slotEnd);
+
+// Local date in YYYY-MM-DD format
+const dateStr = slotStartDate.toLocaleDateString("en-CA"); // "YYYY-MM-DD"
+
+// Local time in HH:mm format
+const startTimeStr = slotStartDate.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }); // "HH:mm"
+const endTimeStr = slotEndDate.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+
+// Check if slot is available
+const isAvailable = doctor.isAvailableAtDateTime(dateStr, startTimeStr, endTimeStr);
+if (!isAvailable) {
+  return res.status(400).json({ error: "Selected slot is already booked" });
+}
+
+// Book slot immediately
+await doctor.bookSlot(dateStr, startTimeStr, endTimeStr);
+
+
+    // Create appointment (auto-approved)
     const appointment = new Appointment({
       student: req.userId,
       doctor: doctorId,
@@ -52,9 +100,25 @@ router.post("/", authMiddleware, async (req, res) => {
       slotEnd,
       notes,
       mode,
+      status: "approved",
     });
 
     await appointment.save();
+
+    // Send emails
+    const student = await User.findById(req.userId);
+    const adminEmail = process.env.ADMIN_EMAIL;
+    const emailText = `Appointment Details:
+Doctor: ${doctor.name}
+Date: ${dateStr}
+Time: ${startTimeStr} - ${endTimeStr}
+Mode: ${mode}
+Notes: ${notes || "N/A"}`;
+
+    sendEmail(student.email, "Appointment Confirmed", `Dear ${student.name},\n\n${emailText}`);
+    sendEmail(doctor.email, "New Appointment Booked", emailText);
+    if (adminEmail) sendEmail(adminEmail, "New Appointment Booked", emailText);
+
     res.status(201).json({ message: "Appointment booked successfully!", appointment });
   } catch (err) {
     console.error("Error booking appointment:", err);
@@ -62,7 +126,9 @@ router.post("/", authMiddleware, async (req, res) => {
   }
 });
 
+// ======================
 // Get all appointments (admin only)
+// ======================
 router.get("/", authMiddleware, async (req, res) => {
   try {
     if (req.userRole !== "admin") {
@@ -73,7 +139,7 @@ router.get("/", authMiddleware, async (req, res) => {
       .populate("doctor", "name specialization email phone")
       .populate("student", "name email phone")
       .sort({ slotStart: 1 });
-
+    console.log("hello")
     res.json({ data: appointments });
   } catch (err) {
     console.error("Error fetching all appointments:", err);
@@ -81,7 +147,9 @@ router.get("/", authMiddleware, async (req, res) => {
   }
 });
 
+// ======================
 // Get all appointments for a specific doctor (admin only)
+// ======================
 router.get("/doctor/:doctorId", authMiddleware, async (req, res) => {
   try {
     if (req.userRole !== "admin") {
@@ -89,7 +157,6 @@ router.get("/doctor/:doctorId", authMiddleware, async (req, res) => {
     }
 
     const { doctorId } = req.params;
-
     const appointments = await Appointment.find({ doctor: doctorId })
       .populate("student", "name email phone")
       .sort({ slotStart: 1 });
@@ -101,10 +168,11 @@ router.get("/doctor/:doctorId", authMiddleware, async (req, res) => {
   }
 });
 
+// ======================
 // Update appointment status (doctors or admins only)
+// ======================
 router.patch("/:id/status", authMiddleware, async (req, res) => {
   try {
-    // Restrict to doctors and admins
     if (!["doctor", "admin"].includes(req.userRole)) {
       return res.status(403).json({ error: "Access denied: doctors or admins only" });
     }
@@ -112,7 +180,6 @@ router.patch("/:id/status", authMiddleware, async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
-    // Validate status
     if (!["pending", "approved", "rejected", "completed"].includes(status)) {
       return res.status(400).json({ error: "Invalid status" });
     }
@@ -120,7 +187,6 @@ router.patch("/:id/status", authMiddleware, async (req, res) => {
     const appointment = await Appointment.findById(id);
     if (!appointment) return res.status(404).json({ error: "Appointment not found" });
 
-    // Ensure doctors can only update their own appointments
     if (req.userRole === "doctor" && appointment.doctor.toString() !== req.userId) {
       return res.status(403).json({ error: "Access denied: not your appointment" });
     }
@@ -138,11 +204,8 @@ router.patch("/:id/status", authMiddleware, async (req, res) => {
 // ======================
 // Student-Specific Routes
 // ======================
-
-// Total sessions attended (student)
 router.get("/my/attended", authMiddleware, async (req, res) => {
   try {
-    // Restrict to students
     if (req.userRole !== "student") {
       return res.status(403).json({ error: "Access denied: students only" });
     }
@@ -158,10 +221,8 @@ router.get("/my/attended", authMiddleware, async (req, res) => {
   }
 });
 
-// Total upcoming sessions (student)
 router.get("/my/upcoming", authMiddleware, async (req, res) => {
   try {
-    // Restrict to students
     if (req.userRole !== "student") {
       return res.status(403).json({ error: "Access denied: students only" });
     }
@@ -182,22 +243,15 @@ router.get("/my/upcoming", authMiddleware, async (req, res) => {
 // ======================
 // Doctor-Specific Routes
 // ======================
-
-// Get all appointments for the logged-in doctor or all appointments for admin
 router.get("/my/appointments", authMiddleware, async (req, res) => {
   try {
-    // Check if user is a doctor or admin
     if (!["doctor", "admin"].includes(req.userRole)) {
       return res.status(403).json({ error: "Access denied: doctors or admins only" });
     }
 
-    // Build query
     let query = {};
-    if (req.userRole === "doctor") {
-      query.doctor = req.userId; // Filter by doctor ID for doctors
-    }
+    if (req.userRole === "doctor") query.doctor = req.userId;
 
-    // Filter by status if provided (e.g., ?status=pending)
     if (req.query.status) {
       if (!["pending", "approved", "rejected", "completed"].includes(req.query.status)) {
         return res.status(400).json({ error: "Invalid status" });
@@ -205,7 +259,6 @@ router.get("/my/appointments", authMiddleware, async (req, res) => {
       query.status = req.query.status;
     }
 
-    // Add search functionality if search term provided
     if (req.query.search && req.query.search.trim()) {
       query.$or = [
         { "student.name": { $regex: req.query.search, $options: "i" } },
@@ -228,39 +281,30 @@ router.get("/my/appointments", authMiddleware, async (req, res) => {
   }
 });
 
-// Get pending appointments for the logged-in doctor or all pending for admin
+// ======================
+// Pending appointments
+// ======================
 router.get("/appointments/pending", authMiddleware, async (req, res) => {
   try {
-    console.log("Pending appointments route hit");
-
-    // Check if user is a doctor or admin
     if (!["doctor", "admin"].includes(req.userRole)) {
       return res.status(403).json({ error: "Access denied: doctors or admins only" });
     }
 
-    // Build query
     let query = { status: "pending" };
-    if (req.userRole === "doctor") {
-      query.doctor = req.userId; // Filter by doctor ID for doctors
-    }
+    if (req.userRole === "doctor") query.doctor = req.userId;
 
-    // Add search functionality if search term provided
     if (req.query.search && req.query.search.trim()) {
       query.$or = [
         { "student.name": { $regex: req.query.search, $options: "i" } },
         { notes: { $regex: req.query.search, $options: "i" } },
       ];
-      if (req.userRole === "admin") {
-        query.$or.push({ "doctor.name": { $regex: req.query.search, $options: "i" } });
-      }
+      if (req.userRole === "admin") query.$or.push({ "doctor.name": { $regex: req.query.search, $options: "i" } });
     }
 
     const appointments = await Appointment.find(query)
       .populate("student", "name email phone")
       .populate("doctor", "name specialization email phone")
       .sort({ createdAt: -1 });
-
-    console.log("Found pending appointments:", appointments.length);
 
     res.json({ data: appointments });
   } catch (err) {
@@ -269,38 +313,30 @@ router.get("/appointments/pending", authMiddleware, async (req, res) => {
   }
 });
 
-// Get rejected appointments for the logged-in doctor or all rejected for admin
+// ======================
+// Rejected appointments
+// ======================
 router.get("/rejected", authMiddleware, async (req, res) => {
   try {
-    console.log("try")
-    // Check if user is a doctor or admin
     if (!["doctor", "admin"].includes(req.userRole)) {
       return res.status(403).json({ error: "Access denied: doctors or admins only" });
     }
 
-    // Build query
     let query = { status: "rejected" };
-    if (req.userRole === "doctor") {
-      query.doctor = req.userId; // Filter by doctor ID for doctors
-    }
+    if (req.userRole === "doctor") query.doctor = req.userId;
 
-    // Add search functionality if search term provided
     if (req.query.search && req.query.search.trim()) {
       query.$or = [
         { "student.name": { $regex: req.query.search, $options: "i" } },
         { notes: { $regex: req.query.search, $options: "i" } },
       ];
-      if (req.userRole === "admin") {
-        query.$or.push({ "doctor.name": { $regex: req.query.search, $options: "i" } });
-      }
+      if (req.userRole === "admin") query.$or.push({ "doctor.name": { $regex: req.query.search, $options: "i" } });
     }
 
     const appointments = await Appointment.find(query)
       .populate("student", "name email phone")
       .populate("doctor", "name specialization email phone")
       .sort({ createdAt: -1 });
-
-    console.log("Rejected appointments:", appointments.length);
 
     res.json({ data: appointments });
   } catch (err) {
@@ -309,39 +345,30 @@ router.get("/rejected", authMiddleware, async (req, res) => {
   }
 });
 
-// Get approved appointments for the logged-in doctor or all approved for admin
+// ======================
+// Approved appointments
+// ======================
 router.get("/approved", authMiddleware, async (req, res) => {
   try {
-    console.log("Approved appointments route hit");
-
-    // Check if user is a doctor or admin
     if (!["doctor", "admin"].includes(req.userRole)) {
       return res.status(403).json({ error: "Access denied: doctors or admins only" });
     }
 
-    // Build query
     let query = { status: "approved" };
-    if (req.userRole === "doctor") {
-      query.doctor = req.userId; // Filter by doctor ID for doctors
-    }
+    if (req.userRole === "doctor") query.doctor = req.userId;
 
-    // Add search functionality if search term provided
     if (req.query.search && req.query.search.trim()) {
       query.$or = [
         { "student.name": { $regex: req.query.search, $options: "i" } },
         { notes: { $regex: req.query.search, $options: "i" } },
       ];
-      if (req.userRole === "admin") {
-        query.$or.push({ "doctor.name": { $regex: req.query.search, $options: "i" } });
-      }
+      if (req.userRole === "admin") query.$or.push({ "doctor.name": { $regex: req.query.search, $options: "i" } });
     }
 
     const appointments = await Appointment.find(query)
       .populate("student", "name email phone")
       .populate("doctor", "name specialization email phone")
       .sort({ slotStart: 1 });
-
-    console.log("Found approved appointments:", appointments.length);
 
     res.json({ data: appointments });
   } catch (err) {

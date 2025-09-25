@@ -5,6 +5,36 @@ import User from "../models/User.js";
 import University from "../models/University.js";
 import Doctor from "../models/Doctor.js";
 
+
+const authMiddleware = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+
+  // 1️⃣ Check if token exists
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ message: "No token, authorization denied" });
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  try {
+    // 2️⃣ Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // 3️⃣ Attach user to request (without password)
+    req.user = await User.findById(decoded.id).select("-password");
+
+    if (!req.user) {
+      return res.status(401).json({ message: "User not found" });
+    }
+
+    next(); // ✅ go to next middleware/route
+  } catch (err) {
+    console.error("Auth Middleware Error:", err.message);
+    res.status(401).json({ message: "Invalid token" });
+  }
+};
+
+
 const router = express.Router();
 
 const ADMIN_EMAIL = "rahul3@gmail.com";
@@ -163,6 +193,7 @@ console.log("DB hash type:", typeof user.password, `"${user.password}"`);
         email: user.email,
         phone: user.phone || "",
         role: user.role,
+        consentAccepted: user.consentAccepted,
         university: userType === "student" ? user.university || null : null,
       },
     });
@@ -228,5 +259,23 @@ router.post("/admin/create-university-admin", async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 });
+
+// routes/userRoutes.js
+router.post("/consent", authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { consentAccepted: true },
+      { new: true }
+    );
+    res.json({ success: true, consentAccepted: user.consentAccepted });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Error updating consent" });
+  }
+});
+
+
+
+
 
 export default router;

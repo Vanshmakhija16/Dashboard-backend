@@ -4,9 +4,26 @@ import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import Doctor from "../models/Doctor.js";
 import User from "../models/User.js";
+import upload from "../middlewares/upload.js"; 
+import jwt from "jsonwebtoken";
 
 const router = express.Router();
 
+const authMiddleware = (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.split(" ")[1];
+    if (!token) {
+      return res.status(401).json({ success: false, message: "No token provided" });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.userId = decoded.id || decoded._id; // depends on how you sign token
+    next();
+  } catch (err) {
+    console.error("Auth error:", err);
+    return res.status(401).json({ success: false, message: "Invalid token" });
+  }
+};
 // --------------------- HELPERS ---------------------
 
 // Format doctor for frontend response
@@ -42,12 +59,18 @@ const formatDoctorResponse = (doctor) => {
     }
     obj.slots = dateSlotObj;
     obj.dateSlots = dateSlotObj;
-  } else if (obj.dateSlots && typeof obj.dateSlots === 'object') {
+  }   else if (obj.dateSlots && typeof obj.dateSlots === 'object') {
     obj.slots = obj.dateSlots;
   }
+
+  // ✅ Add profileImage fiaeld before returning
+  obj.profileImage = doctor.imageUrl 
+    ? `${process.env.BASE_URL}${doctor.imageUrl}` 
+    : null;
   
   return obj;
 };
+
 
 // Validate MongoDB ObjectId
 const validateObjectId = (req, res, next) => {
@@ -65,7 +88,7 @@ const generatePassword = () => {
 // --------------------- ROUTES ---------------------
 
 // Add new doctor
-router.post("/", async (req, res) => {
+router.post("/", upload.single("profileImage"), async (req, res) => {
   try {
     const {
       name,
@@ -78,29 +101,61 @@ router.post("/", async (req, res) => {
       universities,
     } = req.body;
 
+    console.log("👉 Body received:", req.body);
+    console.log("👉 File received:", req.file); 
+    
     if (!name || !specialization || !email) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Name, specialization, and email are required" });
+      return res.status(400).json({
+        success: false,
+        message: "Name, specialization, and email are required",
+      });
     }
 
     const existingDoctor = await Doctor.findOne({ email: email.toLowerCase() });
     if (existingDoctor) {
-      return res.status(400).json({ success: false, message: "Doctor with this email already exists" });
+      return res.status(400).json({
+        success: false,
+        message: "Doctor with this email already exists",
+      });
     }
+
+    // Parse possible JSON fields
+    const safeWeeklySchedule =
+      weeklySchedule
+        ? typeof weeklySchedule === "string"
+          ? JSON.parse(weeklySchedule)
+          : Array.isArray(weeklySchedule)
+          ? weeklySchedule
+          : []
+        : [];
+
+    const parsedTodaySchedule =
+      todaySchedule
+        ? typeof todaySchedule === "string"
+          ? JSON.parse(todaySchedule)
+          : todaySchedule
+        : null;
+
+    const safeTodaySchedule = parsedTodaySchedule
+      ? {
+          date: parsedTodaySchedule.date || new Date().toISOString().slice(0, 10),
+          available: parsedTodaySchedule.available ?? false,
+          slots: Array.isArray(parsedTodaySchedule.slots) ? parsedTodaySchedule.slots : [],
+        }
+      : { date: new Date().toISOString().slice(0, 10), available: false, slots: [] };
+
+    const safeUniversities =
+      universities
+        ? typeof universities === "string"
+          ? JSON.parse(universities)
+          : Array.isArray(universities)
+          ? universities
+          : []
+        : [];
 
     // Generate random password
     const rawPassword = generatePassword();
     const hashedPassword = await bcrypt.hash(rawPassword, 10);
-
-    const safeTodaySchedule =
-      todaySchedule && typeof todaySchedule === "object"
-        ? {
-            date: todaySchedule.date || new Date().toISOString().slice(0, 10),
-            available: todaySchedule.available ?? false,
-            slots: Array.isArray(todaySchedule.slots) ? todaySchedule.slots : [],
-          }
-        : { date: new Date().toISOString().slice(0, 10), available: false, slots: [] };
 
     const doctor = new Doctor({
       name,
@@ -110,10 +165,11 @@ router.post("/", async (req, res) => {
       password: hashedPassword,
       role: "doctor",
       availabilityType: availabilityType || "both",
-      weeklySchedule: Array.isArray(weeklySchedule) ? weeklySchedule : [],
+      weeklySchedule: safeWeeklySchedule,
       todaySchedule: safeTodaySchedule,
-      universities: Array.isArray(universities) ? universities : [],
-      dateSlots: new Map() // Initialize empty dateSlots
+      universities: safeUniversities,
+      dateSlots: new Map(), // Initialize empty dateSlots
+      imageUrl: req.file ? `/uploads/doctors/${req.file.filename}` : "",
     });
 
     await doctor.save();
@@ -121,7 +177,7 @@ router.post("/", async (req, res) => {
     res.status(201).json({
       success: true,
       data: formatDoctorResponse(doctor),
-      generatedPassword: rawPassword, // Send plain password back to admin
+      generatedPassword: rawPassword,
     });
   } catch (err) {
     console.error("Error creating doctor:", err);
@@ -167,9 +223,12 @@ router.get("/", async (req, res) => {
 });
 
 // Get doctors for student's university
-router.get("/my-university", async (req, res) => {
+router.get("/my-university",  authMiddleware, async (req, res) => {
   try {
+
     const student = await User.findById(req.userId).select("university");
+            console.log(req.userId)
+
     if (!student || !student.university) {
       return res.status(404).json({ success: false, message: "Student's university not found" });
     }
@@ -191,7 +250,7 @@ router.get("/my-university", async (req, res) => {
 });
 
 // Get doctor by ID
-router.get("/:id", validateObjectId, async (req, res) => {
+router.get("/:id", validateObjectId, upload.single("profileImage"), async (req, res) => {
   try {
     const doctor = await Doctor.findById(req.params.id)
       .select('-password')
@@ -212,8 +271,10 @@ router.get("/:id", validateObjectId, async (req, res) => {
 });
 
 // Update full doctor info
-router.put("/:id", validateObjectId, async (req, res) => {
+
+router.put("/:id", validateObjectId, upload.single("profileImage"), async (req, res) => {
   try {
+    // req.body values will be strings if FormData is used, so be safe
     const {
       name,
       specialization,
@@ -225,45 +286,82 @@ router.put("/:id", validateObjectId, async (req, res) => {
       universities,
     } = req.body;
 
+    // Validate required fields
     if (!name || !specialization || !email) {
-      return res.status(400).json({ success: false, message: "Name, specialization, and email are required" });
+      return res.status(400).json({
+        success: false,
+        message: "Name, specialization, and email are required",
+      });
     }
 
     const doctor = await Doctor.findById(req.params.id);
     if (!doctor) {
-      return res.status(404).json({ success: false, message: "Doctor not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Doctor not found",
+      });
     }
 
-    // Check if email is being changed and if it already exists
-    if (email !== doctor.email) {
+    // Check for email conflicts if email is changed
+    if (email.toLowerCase() !== doctor.email) {
       const existingDoctor = await Doctor.findOne({ email: email.toLowerCase() });
       if (existingDoctor) {
-        return res.status(400).json({ success: false, message: "Doctor with this email already exists" });
+        return res.status(400).json({
+          success: false,
+          message: "Doctor with this email already exists",
+        });
       }
     }
 
-    // Update fields
-    doctor.name = name;
-    doctor.specialization = specialization;
-    doctor.email = email.toLowerCase();
+    // ✅ Update fields safely
+    doctor.name = name || doctor.name;
+    doctor.specialization = specialization || doctor.specialization;
+    doctor.email = email ? email.toLowerCase() : doctor.email;
     doctor.phone = phone || doctor.phone;
     doctor.availabilityType = availabilityType || doctor.availabilityType;
-    doctor.weeklySchedule = Array.isArray(weeklySchedule) ? weeklySchedule : doctor.weeklySchedule;
-    doctor.universities = Array.isArray(universities) ? universities : doctor.universities;
+
+    // Parse weeklySchedule/universities if they come as JSON string from FormData
+    if (weeklySchedule) {
+      doctor.weeklySchedule =
+        typeof weeklySchedule === "string"
+          ? JSON.parse(weeklySchedule)
+          : Array.isArray(weeklySchedule)
+          ? weeklySchedule
+          : doctor.weeklySchedule;
+    }
+
+    if (universities) {
+      doctor.universities =
+        typeof universities === "string"
+          ? JSON.parse(universities)
+          : Array.isArray(universities)
+          ? universities
+          : doctor.universities;
+    }
 
     if (todaySchedule) {
+      const parsedToday =
+        typeof todaySchedule === "string"
+          ? JSON.parse(todaySchedule)
+          : todaySchedule;
+
       doctor.todaySchedule = {
-        date: todaySchedule.date || new Date().toISOString().slice(0, 10),
-        available: todaySchedule.available ?? false,
-        slots: Array.isArray(todaySchedule.slots) ? todaySchedule.slots : [],
+        date: parsedToday.date || new Date().toISOString().slice(0, 10),
+        available: parsedToday.available ?? false,
+        slots: Array.isArray(parsedToday.slots) ? parsedToday.slots : [],
       };
+    }
+
+    // ✅ Handle new image if uploaded
+    if (req.file) {
+      doctor.imageUrl = `/uploads/doctors/${req.file.filename}`;
     }
 
     await doctor.save();
 
-    res.status(200).json({ 
-      success: true, 
-      data: formatDoctorResponse(doctor) 
+    res.status(200).json({
+      success: true,
+      data: formatDoctorResponse(doctor),
     });
   } catch (err) {
     console.error("Error updating doctor:", err);
@@ -602,5 +700,29 @@ router.delete("/:id", validateObjectId, async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
+// GET /api/doctors/:id/available-dates?days=14
+router.get("/:id/available-dates", validateObjectId, async (req, res) => {
+  try {
+    const days = parseInt(req.query.days, 10) || 14;
+    const doctor = await Doctor.findById(req.params.id).select("-password");
+    if (!doctor) return res.status(404).json({ success: false, message: "Doctor not found" });
+
+    // Use the new helper (or existing one you already have)
+    const grouped = doctor.getAvailableDates ? doctor.getAvailableDates(days) : doctor.getAllDateSlots ? doctor.getAllDateSlots() : (doctor.dateSlots || doctor.slots || {});
+    // Ensure sorted ascending by date
+    const sortedDates = Object.keys(grouped).sort((a,b) => new Date(a) - new Date(b));
+    const availableDates = sortedDates.map(date => ({ date, slots: grouped[date] || [] }));
+
+    res.json({ success: true, data: availableDates });
+  } catch (err) {
+    console.error("Error fetching available dates:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+
+
+
 
 export default router;

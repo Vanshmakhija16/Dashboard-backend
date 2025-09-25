@@ -42,15 +42,22 @@ const sessionSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "approved", "completed", "cancelled"],
-      default: "pending",
+      enum: ["approved", "completed", "cancelled"], // simplified for auto-booking
+      default: "approved",
     },
+    completedAt: { type: Date, default: null },
+
     allottedDate: {
-      type: Date, // optional override by admin
+      type: Date, // optional override by admin, kept for backward compatibility
     },
   },
   { timestamps: true }
 );
+
+// Virtual field to easily check if a session is booked
+sessionSchema.virtual("isBooked").get(function () {
+  return this.status === "booked";
+});
 
 const Session = mongoose.model("Session", sessionSchema);
 export default Session;

@@ -1,18 +1,27 @@
 import mongoose from "mongoose";
 
-const appointmentSchema = new mongoose.Schema(
+const sessionSchema = new mongoose.Schema(
   {
     student: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User", // Reference the User collection
+      ref: "User",
       required: true,
     },
-    doctor: {
+    doctorId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Doctor", // Reference the Doctor collection
+      ref: "Doctor",
       required: true,
     },
-    // ❌ Removed name & phone (we now rely on student info from User model)
+    patientName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    mobile: {
+      type: String,
+      required: true,
+      trim: true,
+    },
     slotStart: {
       type: Date,
       required: true,
@@ -23,22 +32,31 @@ const appointmentSchema = new mongoose.Schema(
     },
     mode: {
       type: String,
-      enum: ["online", "offline"],
-      default: "online",
+      enum: ["Online", "Offline"],
+      required: true,
     },
     notes: {
       type: String,
-      trim: true,
       default: "",
+      trim: true,
     },
     status: {
       type: String,
-      enum: ["pending", "approved", "completed", "cancelled", "rejected"],
-      default: "pending",
+      enum: ["booked", "completed", "cancelled"], // simplified
+      default: "booked",
+    },
+    allottedDate: {
+      type: Date,
     },
   },
   { timestamps: true }
 );
 
-const Appointment = mongoose.model("Appointment", appointmentSchema);
-export default Appointment;
+// Virtual field
+sessionSchema.virtual("isBooked").get(function () {
+  return this.status === "booked";
+});
+
+// Prevent OverwriteModelError
+const Session = mongoose.models.Session || mongoose.model("Session", sessionSchema);
+export default Session;

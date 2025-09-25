@@ -12,6 +12,13 @@ import appointmentRoutes from "./routes/appointmentRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import assessmentsRoute from "./routes/assessments.js";
 import universityRoutes from "./routes/universityRoutes.js";
+import reportRoutes from "./routes/reportRoutes.js";
+import path from "path";
+import { fileURLToPath } from "url";
+
+// ✅ for __dirname in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
@@ -21,6 +28,8 @@ app.use(cors({
   origin: process.env.CLIENT_URL || "*",
   credentials: true
 }));
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+
 // --------------------
 // Auth Middleware
 // --------------------
@@ -57,11 +66,12 @@ export const requireRole = (roles) => (req, res, next) => {
 // --------------------
 app.use("/api/auth", authRoutes);
 app.use("/api/sessions", authMiddleware, sessionRoutes);
-app.use("/api/doctors", authMiddleware,doctorRoutes); // auth handled inside doctor.routes if needed
+app.use("/api/doctors",doctorRoutes); // auth handled inside doctor.routes if needed
 app.use("/api/appointments", authMiddleware, appointmentRoutes);
 app.use("/api/admin", authMiddleware, adminRoutes);
 app.use("/api/assessments", assessmentsRoute);
 app.use("/api/universities", universityRoutes); 
+app.use("/api/reports", reportRoutes);
 
 // Get logged-in user info
 app.get("/api/me", authMiddleware, async (req, res) => {
