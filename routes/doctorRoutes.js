@@ -169,7 +169,8 @@ router.post("/", upload.single("profileImage"), async (req, res) => {
       todaySchedule: safeTodaySchedule,
       universities: safeUniversities,
       dateSlots: new Map(), // Initialize empty dateSlots
-      imageUrl: req.file ? `/uploads/doctors/${req.file.filename}` : "",
+      profileImage: req.file ? `${BASE_URL}/uploads/doctors/${req.file.filename}` : "",
+
     });
 
     await doctor.save();
