@@ -54,7 +54,7 @@ const userSchema = new mongoose.Schema(
         status: {
           type: String,
           enum: ["locked", "unlocked"],
-          default: "locked",
+          default: "unlocked",
         },
         assignedAt: { type: Date, default: Date.now },
       },
