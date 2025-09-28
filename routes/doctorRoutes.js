@@ -757,3 +757,5 @@ router.get("/:id/available-dates", validateObjectId, async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
+export default router;
