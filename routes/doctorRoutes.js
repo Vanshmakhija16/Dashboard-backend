@@ -6,6 +6,8 @@ import Doctor from "../models/Doctor.js";
 import User from "../models/User.js";
 import upload from "../middlewares/upload.js"; 
 import jwt from "jsonwebtoken";
+import Session from "../models/Session.js";
+
 
 const router = express.Router();
 
