@@ -709,13 +709,75 @@ router.get("/:id/available-dates", validateObjectId, async (req, res) => {
     const doctor = await Doctor.findById(req.params.id).select("-password");
     if (!doctor) return res.status(404).json({ success: false, message: "Doctor not found" });
 
-    // Use the new helper (or existing one you already have)
-    const grouped = doctor.getAvailableDates ? doctor.getAvailableDates(days) : doctor.getAllDateSlots ? doctor.getAllDateSlots() : (doctor.dateSlots || doctor.slots || {});
-    // Ensure sorted ascending by date
-    const sortedDates = Object.keys(grouped).sort((a,b) => new Date(a) - new Date(b));
-    const availableDates = sortedDates.map(date => ({ date, slots: grouped[date] || [] }));
+    // --- hide past dates ---
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-    res.json({ success: true, data: availableDates });
+    // 🔹 Get all slots
+    const grouped = doctor.getAvailableDates 
+      ? doctor.getAvailableDates(days) 
+      : doctor.getAllDateSlots 
+        ? doctor.getAllDateSlots() 
+        : (doctor.dateSlots || doctor.slots || {});
+
+    const sortedDates = Object.keys(grouped).sort((a, b) => new Date(a) - new Date(b));
+
+    // --- Get student's upcoming bookings ---
+    const userId = req.user?._id; // assuming auth middleware sets req.user
+    let blockedUntil = null;
+    let message = null;
+
+    if (userId) {
+      const upcomingBookings = await Booking.find({
+        student: userId,
+        doctor: doctor._id,
+        sessionDate: { $gte: today } // only consider future sessions
+      });
+
+      // Count sessions per day
+      const countByDate = {};
+      upcomingBookings.forEach(b => {
+        const d = new Date(b.sessionDate).toISOString().split("T")[0];
+        countByDate[d] = (countByDate[d] || 0) + 1;
+      });
+
+      // If any day has 2 or more sessions, block next day
+      for (const [date, count] of Object.entries(countByDate)) {
+        if (count >= 2) {
+          const blockDate = new Date(date);
+          blockDate.setDate(blockDate.getDate() + 1); // next day
+          blockDate.setHours(0, 0, 0, 0);
+
+          // Pick the max block date if multiple
+          if (!blockedUntil || blockDate > blockedUntil) {
+            blockedUntil = blockDate;
+            message = `You already booked 2 sessions for ${date}. You can book new sessions starting ${blockDate.toDateString()}.`;
+          }
+        }
+      }
+    }
+
+    // --- Filter slots: no past dates, no empty slots, respect blockedUntil ---
+    const availableDates = sortedDates
+      .map(date => {
+        const slotDate = new Date(date);
+        slotDate.setHours(0, 0, 0, 0);
+
+        if (slotDate < today) return null; // skip past
+        if (!grouped[date] || grouped[date].length === 0) return null; // skip empty
+        if (blockedUntil && slotDate < blockedUntil) return null; // skip blocked days
+
+        return { date, slots: grouped[date] };
+      })
+      .filter(Boolean);
+
+    res.json({ 
+      success: true, 
+      data: availableDates, 
+      blockedUntil: blockedUntil ? blockedUntil.toISOString() : null,
+      message 
+    });
+
   } catch (err) {
     console.error("Error fetching available dates:", err);
     res.status(500).json({ success: false, message: err.message });
