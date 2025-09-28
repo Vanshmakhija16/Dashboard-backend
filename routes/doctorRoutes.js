@@ -709,6 +709,7 @@ router.get("/:id/available-dates", validateObjectId, async (req, res) => {
   try {
     const days = parseInt(req.query.days, 10) || 14;
     const doctor = await Doctor.findById(req.params.id).select("-password");
+
     if (!doctor) {
       return res.status(404).json({ success: false, message: "Doctor not found" });
     }
@@ -720,15 +721,21 @@ router.get("/:id/available-dates", validateObjectId, async (req, res) => {
     }).lean();
 
     const bookedMap = new Set(
-      bookedSessions.map(s => new Date(s.slotStart).toISOString())
+      bookedSessions
+        .map(s => {
+          const d = new Date(s.slotStart);
+          return isNaN(d.getTime()) ? null : d.toISOString();
+        })
+        .filter(Boolean) // remove invalid dates
     );
 
     // ✅ Get slots from doctor model
-    const grouped = doctor.getAvailableDates
-      ? doctor.getAvailableDates(days)
-      : doctor.getAllDateSlots
-      ? doctor.getAllDateSlots()
-      : doctor.dateSlots || doctor.slots || {};
+    const grouped =
+      doctor.getAvailableDates?.(days) ||
+      doctor.getAllDateSlots?.() ||
+      doctor.dateSlots ||
+      doctor.slots ||
+      {};
 
     // ✅ Sort dates ascending
     const sortedDates = Object.keys(grouped).sort((a, b) => new Date(a) - new Date(b));
@@ -738,17 +745,27 @@ router.get("/:id/available-dates", validateObjectId, async (req, res) => {
     today.setHours(0, 0, 0, 0);
 
     const availableDates = sortedDates
-      .filter(date => new Date(date) >= today)
-      .map(date => {
-        const freeSlots = (grouped[date] || []).filter(slot => {
-          const slotTime = slot.start || slot.slotStart || slot.time || slot; // <== Fallback
+      .filter(dateStr => {
+        const d = new Date(dateStr);
+        return !isNaN(d.getTime()) && d >= today;
+      })
+      .map(dateStr => {
+        const freeSlots = (grouped[dateStr] || []).filter(slot => {
+          const slotTime =
+            slot.start || slot.slotStart || slot.time || slot; // fallback
+
           if (!slotTime) return false;
 
-          const slotISO = new Date(slotTime).toISOString();
-          return !bookedMap.has(slotISO); // 🚫 filter out booked ones
+          const d = new Date(slotTime);
+          if (isNaN(d.getTime())) {
+            console.warn(`⚠️ Skipping invalid slot time:`, slotTime);
+            return false;
+          }
+
+          return !bookedMap.has(d.toISOString());
         });
 
-        return { date, slots: freeSlots };
+        return { date: dateStr, slots: freeSlots };
       })
       .filter(entry => entry.slots.length > 0);
 
