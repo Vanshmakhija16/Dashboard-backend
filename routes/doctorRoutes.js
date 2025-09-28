@@ -743,7 +743,7 @@ router.get("/:id/available-dates", validateObjectId, async (req, res) => {
       .filter(date => new Date(date) >= today) // 🚫 hide past dates
       .map(date => {
         const freeSlots = (grouped[date] || []).filter(slot => {
-          const slotStart = new Date(slot.start).toISOString();
+          const slotStart = new Date(slot.slotStart || slot.start).toISOString();
           return !bookedMap.has(slotStart); // 🚫 hide booked slots
         });
 
