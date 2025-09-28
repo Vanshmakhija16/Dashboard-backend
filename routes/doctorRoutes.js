@@ -709,7 +709,6 @@ router.get("/:id/available-dates", validateObjectId, async (req, res) => {
   try {
     const days = parseInt(req.query.days, 10) || 14;
     const doctor = await Doctor.findById(req.params.id).select("-password");
-
     if (!doctor) {
       return res.status(404).json({ success: false, message: "Doctor not found" });
     }
@@ -721,21 +720,15 @@ router.get("/:id/available-dates", validateObjectId, async (req, res) => {
     }).lean();
 
     const bookedMap = new Set(
-      bookedSessions
-        .map(s => {
-          const d = new Date(s.slotStart);
-          return isNaN(d.getTime()) ? null : d.toISOString();
-        })
-        .filter(Boolean) // remove invalid dates
+      bookedSessions.map(s => new Date(s.slotStart).toISOString())
     );
 
     // ✅ Get slots from doctor model
-    const grouped =
-      doctor.getAvailableDates?.(days) ||
-      doctor.getAllDateSlots?.() ||
-      doctor.dateSlots ||
-      doctor.slots ||
-      {};
+    const grouped = doctor.getAvailableDates
+      ? doctor.getAvailableDates(days)
+      : doctor.getAllDateSlots
+      ? doctor.getAllDateSlots()
+      : doctor.dateSlots || doctor.slots || {};
 
     // ✅ Sort dates ascending
     const sortedDates = Object.keys(grouped).sort((a, b) => new Date(a) - new Date(b));
@@ -745,27 +738,26 @@ router.get("/:id/available-dates", validateObjectId, async (req, res) => {
     today.setHours(0, 0, 0, 0);
 
     const availableDates = sortedDates
-      .filter(dateStr => {
-        const d = new Date(dateStr);
-        return !isNaN(d.getTime()) && d >= today;
-      })
-      .map(dateStr => {
-        const freeSlots = (grouped[dateStr] || []).filter(slot => {
-          const slotTime =
-            slot.start || slot.slotStart || slot.time || slot; // fallback
+      .filter(date => new Date(date) >= today)
+      .map(date => {
+        const slots = grouped[date] || [];
 
-          if (!slotTime) return false;
+        const freeSlots = slots.filter(slot => {
+          const startTime = slot.startTime || slot.start || slot.slotStart || slot.time;
+          if (!startTime) return false;
 
-          const d = new Date(slotTime);
-          if (isNaN(d.getTime())) {
-            console.warn(`⚠️ Skipping invalid slot time:`, slotTime);
+          // ✅ Combine date + time into full Date
+          const slotDateTime = new Date(`${date}T${startTime}:00`);
+          if (isNaN(slotDateTime)) {
+            console.warn("⚠️ Skipping invalid slot time:", slot);
             return false;
           }
 
-          return !bookedMap.has(d.toISOString());
+          const slotISO = slotDateTime.toISOString();
+          return !bookedMap.has(slotISO) && slot.isAvailable !== false;
         });
 
-        return { date: dateStr, slots: freeSlots };
+        return { date, slots: freeSlots };
       })
       .filter(entry => entry.slots.length > 0);
 
