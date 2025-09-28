@@ -711,18 +711,17 @@ router.get("/:id/available-dates", validateObjectId, async (req, res) => {
       return res.status(404).json({ success: false, message: "Doctor not found" });
     }
 
-    // ✅ Get all booked sessions for this doctor
+    // ✅ Get booked sessions for this doctor
     const bookedSessions = await Session.find({
       doctorId: doctor._id,
-      status: { $ne: "cancelled" } // ignore cancelled bookings
+      status: { $ne: "cancelled" }
     }).lean();
 
-    // ✅ Convert booked session start times to ISO strings for quick lookup
     const bookedMap = new Set(
       bookedSessions.map(s => new Date(s.slotStart).toISOString())
     );
 
-    // ✅ Use doctor helpers to get slots
+    // ✅ Get slots from doctor model
     const grouped = doctor.getAvailableDates
       ? doctor.getAvailableDates(days)
       : doctor.getAllDateSlots
@@ -730,26 +729,26 @@ router.get("/:id/available-dates", validateObjectId, async (req, res) => {
       : doctor.dateSlots || doctor.slots || {};
 
     // ✅ Sort dates ascending
-    const sortedDates = Object.keys(grouped).sort(
-      (a, b) => new Date(a) - new Date(b)
-    );
+    const sortedDates = Object.keys(grouped).sort((a, b) => new Date(a) - new Date(b));
 
-    // ✅ Today (midnight) to filter out past dates
+    // ✅ Remove past dates
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // ✅ Build availableDates list
     const availableDates = sortedDates
-      .filter(date => new Date(date) >= today) // 🚫 hide past dates
+      .filter(date => new Date(date) >= today)
       .map(date => {
         const freeSlots = (grouped[date] || []).filter(slot => {
-          const slotStart = new Date(slot.slotStart || slot.start).toISOString();
-          return !bookedMap.has(slotStart); // 🚫 hide booked slots
+          const slotTime = slot.start || slot.slotStart || slot.time || slot; // <== Fallback
+          if (!slotTime) return false;
+
+          const slotISO = new Date(slotTime).toISOString();
+          return !bookedMap.has(slotISO); // 🚫 filter out booked ones
         });
 
         return { date, slots: freeSlots };
       })
-      .filter(entry => entry.slots.length > 0); // 🚫 hide empty days
+      .filter(entry => entry.slots.length > 0);
 
     res.json({ success: true, data: availableDates });
   } catch (err) {
