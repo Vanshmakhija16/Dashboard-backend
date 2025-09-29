@@ -713,62 +713,82 @@ router.get("/:id/available-dates", validateObjectId, async (req, res) => {
       return res.status(404).json({ success: false, message: "Doctor not found" });
     }
 
-    // ✅ Get booked sessions (all patients)
+    // ✅ Get booked sessions for this doctor
     const bookedSessions = await Session.find({
       doctorId: doctor._id,
       status: { $ne: "cancelled" }
     }).lean();
 
-    // ✅ Get logged-in user (assuming req.user is populated via auth middleware)
-     const userId = req.userId;
+    // ✅ Logged-in user
+    const userId = req.userId;
 
-    // ✅ Find latest booking date for this user with this doctor
-    let userLastBookingDate = null;
+    // ✅ Track bookings per user per date + block rule
+    let userBookingCounts = {};
+    let blockedUntil = null; // 👈 last date where user hit booking limit (2)
+
     if (userId) {
-      const userBookings = bookedSessions.filter(s => String(s.userId) === String(userId));
-      if (userBookings.length > 0) {
-        userLastBookingDate = new Date(
-          Math.max(...userBookings.map(s => new Date(s.slotStart).getTime()))
-        );
-        userLastBookingDate.setHours(0, 0, 0, 0); // normalize
-      }
+      bookedSessions
+        .filter((s) => String(s.userId) === String(userId))
+        .forEach((s) => {
+          const d = new Date(s.slotStart);
+          d.setHours(0, 0, 0, 0);
+          const key = d.toISOString().split("T")[0]; // yyyy-mm-dd
+          userBookingCounts[key] = (userBookingCounts[key] || 0) + 1;
+
+          // if user booked 2 or more sessions → block until this date
+          if (userBookingCounts[key] >= 2) {
+            const blockDate = new Date(key);
+            if (!blockedUntil || blockDate > blockedUntil) {
+              blockedUntil = blockDate;
+            }
+          }
+        });
     }
 
-    // ✅ Convert booked sessions into a Set for quick lookup
+    // ✅ Build quick lookup for booked slots
     const bookedMap = new Set(
-      bookedSessions.map(s => new Date(s.slotStart).toISOString())
+      bookedSessions.map((s) => new Date(s.slotStart).toISOString())
     );
 
-    // ✅ Get slots from doctor model
+    // ✅ Get doctor’s raw slots
     const grouped =
-      doctor.getAvailableDates
-        ? doctor.getAvailableDates(days)
-        : doctor.getAllDateSlots
-        ? doctor.getAllDateSlots()
-        : doctor.dateSlots || doctor.slots || {};
+      doctor.getAvailableDates?.(days) ??
+      doctor.getAllDateSlots?.() ??
+      doctor.dateSlots ??
+      doctor.slots ??
+      {};
 
-    // ✅ Sort dates ascending
     const sortedDates = Object.keys(grouped).sort(
       (a, b) => new Date(a) - new Date(b)
     );
 
-    // ✅ Today cutoff
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    // ✅ Main filter
     const availableDates = sortedDates
-      .filter(date => {
+      .filter((date) => {
         const d = new Date(date);
-        // Must be today or later
+        d.setHours(0, 0, 0, 0);
+
+        // 🚫 Past dates
         if (d < today) return false;
-        // Must be after user’s last booking (if any)
-        if (userLastBookingDate && d <= userLastBookingDate) return false;
+
+        // 🚫 If user hit booking limit, block everything until "today > blockedUntil"
+        if (userId && blockedUntil && today <= blockedUntil) {
+          return false;
+        }
+
+        // 🚫 Still block booking more than 2 sessions on the same date
+        const key = d.toISOString().split("T")[0];
+        if (userId && userBookingCounts[key] >= 2) return false;
+
         return true;
       })
-      .map(date => {
+      .map((date) => {
         const slots = grouped[date] || [];
 
-        const freeSlots = slots.filter(slot => {
+        const freeSlots = slots.filter((slot) => {
           const startTime =
             slot.startTime || slot.start || slot.slotStart || slot.time;
           if (!startTime) return false;
@@ -782,13 +802,22 @@ router.get("/:id/available-dates", validateObjectId, async (req, res) => {
 
         return { date, slots: freeSlots };
       })
-      // Remove dates with no free slots
-      .filter(entry => entry.slots.length > 0);
+      .filter((entry) => entry.slots.length > 0);
 
-    res.json({ success: true, data: availableDates });
+    // ✅ Response with block info
+    res.json({
+      success: true,
+      data: availableDates,
+      blockedUntil: blockedUntil ? blockedUntil.toISOString().split("T")[0] : null,
+      message:
+        userId && blockedUntil && today <= blockedUntil
+          ? `You already booked 2 sessions on ${blockedUntil.toISOString().split("T")[0]}. You can book again starting from the next day.`
+          : null,
+    });
   } catch (err) {
     console.error("Error fetching available dates:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
 export default router;
