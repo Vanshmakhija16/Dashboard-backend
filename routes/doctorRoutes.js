@@ -713,45 +713,68 @@ router.get("/:id/available-dates", validateObjectId, async (req, res) => {
       return res.status(404).json({ success: false, message: "Doctor not found" });
     }
 
-    // ✅ Get booked sessions for this doctor
+    // ✅ Get booked sessions (all patients)
     const bookedSessions = await Session.find({
       doctorId: doctor._id,
       status: { $ne: "cancelled" }
     }).lean();
 
+    // ✅ Get logged-in user (assuming req.user is populated via auth middleware)
+     const userId = req.userId;
+
+    // ✅ Find latest booking date for this user with this doctor
+    let userLastBookingDate = null;
+    if (userId) {
+      const userBookings = bookedSessions.filter(s => String(s.userId) === String(userId));
+      if (userBookings.length > 0) {
+        userLastBookingDate = new Date(
+          Math.max(...userBookings.map(s => new Date(s.slotStart).getTime()))
+        );
+        userLastBookingDate.setHours(0, 0, 0, 0); // normalize
+      }
+    }
+
+    // ✅ Convert booked sessions into a Set for quick lookup
     const bookedMap = new Set(
       bookedSessions.map(s => new Date(s.slotStart).toISOString())
     );
 
     // ✅ Get slots from doctor model
-    const grouped = doctor.getAvailableDates
-      ? doctor.getAvailableDates(days)
-      : doctor.getAllDateSlots
-      ? doctor.getAllDateSlots()
-      : doctor.dateSlots || doctor.slots || {};
+    const grouped =
+      doctor.getAvailableDates
+        ? doctor.getAvailableDates(days)
+        : doctor.getAllDateSlots
+        ? doctor.getAllDateSlots()
+        : doctor.dateSlots || doctor.slots || {};
 
     // ✅ Sort dates ascending
-    const sortedDates = Object.keys(grouped).sort((a, b) => new Date(a) - new Date(b));
+    const sortedDates = Object.keys(grouped).sort(
+      (a, b) => new Date(a) - new Date(b)
+    );
 
-    // ✅ Remove past dates
+    // ✅ Today cutoff
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     const availableDates = sortedDates
-      .filter(date => new Date(date) >= today)
+      .filter(date => {
+        const d = new Date(date);
+        // Must be today or later
+        if (d < today) return false;
+        // Must be after user’s last booking (if any)
+        if (userLastBookingDate && d <= userLastBookingDate) return false;
+        return true;
+      })
       .map(date => {
         const slots = grouped[date] || [];
 
         const freeSlots = slots.filter(slot => {
-          const startTime = slot.startTime || slot.start || slot.slotStart || slot.time;
+          const startTime =
+            slot.startTime || slot.start || slot.slotStart || slot.time;
           if (!startTime) return false;
 
-          // ✅ Combine date + time into full Date
           const slotDateTime = new Date(`${date}T${startTime}:00`);
-          if (isNaN(slotDateTime)) {
-            console.warn("⚠️ Skipping invalid slot time:", slot);
-            return false;
-          }
+          if (isNaN(slotDateTime)) return false;
 
           const slotISO = slotDateTime.toISOString();
           return !bookedMap.has(slotISO) && slot.isAvailable !== false;
@@ -759,6 +782,7 @@ router.get("/:id/available-dates", validateObjectId, async (req, res) => {
 
         return { date, slots: freeSlots };
       })
+      // Remove dates with no free slots
       .filter(entry => entry.slots.length > 0);
 
     res.json({ success: true, data: availableDates });
@@ -767,5 +791,4 @@ router.get("/:id/available-dates", validateObjectId, async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
-
 export default router;
