@@ -6,6 +6,8 @@ import Doctor from "../models/Doctor.js";
 import User from "../models/User.js";
 import upload from "../middlewares/upload.js"; 
 import jwt from "jsonwebtoken";
+import Session from "../models/Session.js";
+
 
 const router = express.Router();
 
@@ -703,24 +705,161 @@ router.delete("/:id", validateObjectId, async (req, res) => {
 });
 
 // GET /api/doctors/:id/available-dates?days=14
+// router.get("/:id/available-dates", validateObjectId, async (req, res) => {
+//   try {
+//     const days = parseInt(req.query.days, 10) || 14;
+//     const doctor = await Doctor.findById(req.params.id).select("-password");
+//     if (!doctor) return res.status(404).json({ success: false, message: "Doctor not found" });
+
+//     // Use the new helper (or existing one you already have)
+//     const grouped = doctor.getAvailableDates ? doctor.getAvailableDates(days) : doctor.getAllDateSlots ? doctor.getAllDateSlots() : (doctor.dateSlots || doctor.slots || {});
+//     // Ensure sorted ascending by date
+//     const sortedDates = Object.keys(grouped).sort((a,b) => new Date(a) - new Date(b));
+//     const availableDates = sortedDates.map(date => ({ date, slots: grouped[date] || [] }));
+
+//     res.json({ success: true, data: availableDates });
+//   } catch (err) {
+//     console.error("Error fetching available dates:", err);
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// });
+
+
 router.get("/:id/available-dates", validateObjectId, async (req, res) => {
   try {
     const days = parseInt(req.query.days, 10) || 14;
     const doctor = await Doctor.findById(req.params.id).select("-password");
-    if (!doctor) return res.status(404).json({ success: false, message: "Doctor not found" });
+    if (!doctor) {
+      return res.status(404).json({ success: false, message: "Doctor not found" });
+    }
 
-    // Use the new helper (or existing one you already have)
-    const grouped = doctor.getAvailableDates ? doctor.getAvailableDates(days) : doctor.getAllDateSlots ? doctor.getAllDateSlots() : (doctor.dateSlots || doctor.slots || {});
-    // Ensure sorted ascending by date
-    const sortedDates = Object.keys(grouped).sort((a,b) => new Date(a) - new Date(b));
-    const availableDates = sortedDates.map(date => ({ date, slots: grouped[date] || [] }));
+    // ✅ Get booked sessions for this doctor
+    const bookedSessions = await Session.find({
+      doctorId: doctor._id,
+      status: { $ne: "cancelled" }
+    }).lean();
 
-    res.json({ success: true, data: availableDates });
+    // ✅ Logged-in user (Vansh's ID, for example)
+    const userId = req.userId;
+
+    // --- START: LOGIC FOR GLOBAL 2-SESSION LIMIT PER USER ---
+    let userTotalActiveSessions = 0;
+    let earliestActiveSessionDate = null; 
+
+    if (userId) {
+      // **CRITICAL: This filter ensures only the CURRENT USER'S sessions are counted.**
+      const userActiveSessions = bookedSessions.filter(
+        (s) => String(s.userId) === String(userId)
+      );
+
+      userTotalActiveSessions = userActiveSessions.length;
+
+      // Find the earliest future session date for the current user
+      for (const s of userActiveSessions) {
+        const sessionDate = new Date(s.slotStart);
+        sessionDate.setHours(0, 0, 0, 0);
+
+        if (!earliestActiveSessionDate || sessionDate < earliestActiveSessionDate) {
+          earliestActiveSessionDate = sessionDate;
+        }
+      }
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // ✅ Implement the global block rule:
+    // This only blocks the current user (Vansh) if they have reached their limit (2)
+    // and the date of their earliest session has not passed.
+    let blockedUntilDate = null;
+
+    if (
+      userId &&
+      userTotalActiveSessions >= 2 &&
+      earliestActiveSessionDate &&
+      today <= earliestActiveSessionDate
+    ) {
+      blockedUntilDate = earliestActiveSessionDate;
+
+      // Global block response: no available slots at all
+      return res.json({
+        success: true,
+        data: [], // no available slots at all
+        blockedUntil: blockedUntilDate.toISOString().split("T")[0],
+        message: `You already have ${userTotalActiveSessions} sessions booked. You can book again starting the day after your earliest session on ${blockedUntilDate.toISOString().split("T")[0]}.`,
+      });
+    }
+
+    // --- END: LOGIC FOR GLOBAL 2-SESSION LIMIT PER USER ---
+
+    // ✅ Build lookup for booked slots (for all users, to block the doctor's slots)
+    const bookedMap = new Set(
+      bookedSessions.map((s) => {
+        const dt = new Date(s.slotStart);
+        dt.setSeconds(0, 0);
+        return dt.toISOString();
+      })
+    );
+
+    // ✅ Get doctor’s slots
+    const grouped =
+      doctor.getAvailableDates?.(days) ??
+      doctor.getAllDateSlots?.() ??
+      doctor.dateSlots ??
+      doctor.slots ??
+      {};
+
+    const sortedDates = Object.keys(grouped).sort(
+      (a, b) => new Date(a) - new Date(b)
+    );
+
+    // ✅ Otherwise, show normal available slots
+    const availableDates = sortedDates
+      .filter((date) => {
+        const d = new Date(date);
+        d.setHours(0, 0, 0, 0);
+
+        // 🚫 Past dates
+        if (d < today) return false;
+
+        return true;
+      })
+      .map((date) => {
+        const slots = grouped[date] || [];
+
+        const freeSlots = slots.filter((slot) => {
+          const startTime =
+            slot.startTime || slot.start || slot.slotStart || slot.time;
+          if (!startTime) return false;
+
+          const slotDateTime = new Date(`${date}T${startTime}:00`);
+          if (isNaN(slotDateTime)) return false;
+
+          slotDateTime.setSeconds(0, 0);
+          const slotISO = slotDateTime.toISOString();
+
+          // This blocks slots booked by ANY user (Rahul, Vansh, etc.)
+          return !bookedMap.has(slotISO) && slot.isAvailable !== false;
+        });
+
+        return { date, slots: freeSlots };
+      })
+      .filter((entry) => entry.slots.length > 0);
+
+    // ✅ Response
+    res.json({
+      success: true,
+      data: availableDates,
+      blockedUntil: null,
+    });
   } catch (err) {
     console.error("Error fetching available dates:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
+
+
 
 
 

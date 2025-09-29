@@ -22,7 +22,7 @@ const authMiddleware = async (req, res, next) => {
 
     // 3️⃣ Attach user to request (without password)
     req.user = await User.findById(decoded.id).select("-password");
-
+    
     if (!req.user) {
       return res.status(401).json({ message: "User not found" });
     }
@@ -263,19 +263,57 @@ router.post("/admin/create-university-admin", async (req, res) => {
 // routes/userRoutes.js
 router.post("/consent", authMiddleware, async (req, res) => {
   try {
+    const { consentAccepted } = req.body;
+
+    if (!consentAccepted) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Consent must be accepted." });
+    }
+
     const user = await User.findByIdAndUpdate(
       req.user.id,
       { consentAccepted: true },
       { new: true }
-    );
+    ).select("consentAccepted"); // return only consentAccepted if you want
+
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found." });
+    }
+
     res.json({ success: true, consentAccepted: user.consentAccepted });
   } catch (err) {
-    res.status(500).json({ success: false, message: "Error updating consent" });
+    console.error("Consent update error:", err);
+    res.status(500).json({ success: false, message: "Error updating consent." });
   }
 });
 
 
 
 
+// ✅ Get logged-in user's profile
+router.get("/me", authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user)
+      .select("-password") // never return password
+      .populate("university", "name domainPatterns"); // if linked to university
+
+    if (!user) {
+      console.log(user);
+      
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json({
+      success: true,
+      user,
+    });
+  } catch (err) {
+    console.error("Profile fetch error:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
 
 export default router;
