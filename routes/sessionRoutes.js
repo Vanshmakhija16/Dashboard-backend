@@ -108,6 +108,14 @@ Thank you for booking with us.`;
 // --------------------
 // Book a new session
 // --------------------
+import express from "express";
+import User from "../models/User.js";
+import Doctor from "../models/Doctor.js";
+import Session from "../models/Session.js";
+import { authMiddleware } from "../middlewares/auth.js";
+import { sendNotifications } from "../utils/notifications.js"; // ✅ ensure this exists
+
+
 router.post("/", authMiddleware, async (req, res) => {
   try {
     if (req.userRole !== "student") {
@@ -137,17 +145,15 @@ router.post("/", authMiddleware, async (req, res) => {
     const endOfDay = new Date(slotDate);
     endOfDay.setHours(23, 59, 59, 999);
 
-    // ✅ Debug logs
     console.log("Checking daily session limit for student:", req.userId);
     console.log("Day range:", startOfDay, " -> ", endOfDay);
 
-    // ⚠️ Check which field is in Session schema: `student` vs `studentId`
     const todaySessions = await Session.find({
-      student: req.userId, // change to `studentId` if that's your schema field
+      student: req.userId,
       slotStart: { $gte: startOfDay, $lte: endOfDay },
     });
 
-    console.log("Existing sessions today:", todaySessions.length, todaySessions);
+    console.log("Existing sessions today:", todaySessions.length);
 
     if (todaySessions.length >= 2) {
       return res.status(400).json({
@@ -156,10 +162,9 @@ router.post("/", authMiddleware, async (req, res) => {
     }
     // ---------------------------------------
 
-    // Ensure student has a mobile number
     const studentMobile = student.mobile || "N/A";
 
-    // Normalize mode to match enum in Session schema
+    // Normalize mode
     const modeValue =
       mode.charAt(0).toUpperCase() + mode.slice(1).toLowerCase();
     if (!["Online", "Offline"].includes(modeValue)) {
@@ -186,12 +191,21 @@ router.post("/", authMiddleware, async (req, res) => {
       minute: "2-digit",
     });
 
-    // Ensure dateSlots exist
-    if (!doctor.dateSlots.has(date)) {
+    // ✅ Fix: check if dateSlots is Map or Object
+    if (
+      (doctor.dateSlots instanceof Map && !doctor.dateSlots.has(date)) ||
+      (!(doctor.dateSlots instanceof Map) && !doctor.dateSlots[date])
+    ) {
       const fallbackSlots = doctor
         .getAvailabilityForDate(date)
         .map((s) => ({ ...s }));
-      doctor.dateSlots.set(date, fallbackSlots);
+
+      if (doctor.dateSlots instanceof Map) {
+        doctor.dateSlots.set(date, fallbackSlots);
+      } else {
+        doctor.dateSlots[date] = fallbackSlots;
+      }
+
       doctor.markModified("dateSlots");
       await doctor.save();
     }
@@ -216,7 +230,7 @@ router.post("/", authMiddleware, async (req, res) => {
 
     // Save session (auto-approved)
     const session = new Session({
-      student: req.userId, // change to `studentId` if schema uses that
+      student: req.userId,
       doctorId,
       patientName: student.name,
       mobile: studentMobile,
@@ -229,17 +243,21 @@ router.post("/", authMiddleware, async (req, res) => {
 
     await session.save();
 
-    // Send notifications
-    await sendNotifications(session);
+    // Send notifications if util exists
+    if (typeof sendNotifications === "function") {
+      await sendNotifications(session);
+    }
 
-    res
-      .status(201)
-      .json({ message: "Session booked successfully", session });
+    res.status(201).json({
+      message: "Session booked successfully",
+      session,
+    });
   } catch (error) {
     console.error("Error booking session:", error);
     res.status(500).json({ error: "Failed to book session" });
   }
 });
+
 
 
 

@@ -42,7 +42,7 @@ const sessionSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["approved", "completed", "cancelled"], // simplified for auto-booking
+      enum: ["approved", "completed", "cancelled", "booked"], // ✅ added "booked"
       default: "approved",
     },
     completedAt: { type: Date, default: null },
@@ -54,7 +54,7 @@ const sessionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Virtual field to easily check if a session is booked
+// ✅ No need for virtual that always checks "booked"
 sessionSchema.virtual("isBooked").get(function () {
   return this.status === "booked";
 });
