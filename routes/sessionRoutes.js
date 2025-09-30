@@ -27,15 +27,19 @@ const transporter = nodemailer.createTransport({
 // Middleware to check JWT
 // --------------------
 const authMiddleware = (req, res, next) => {
-
-
   const token = req.headers.authorization?.split(" ")[1];
-  if (!token) return res.status(401).json({ error: "No token provided" });
+  if (!token) {
+    return res.status(401).json({ error: "No token provided" });
+  }
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Store both for convenience
     req.userId = decoded.id;
     req.userRole = decoded.role;
+    req.user = { id: decoded.id, role: decoded.role }; // 👈 add this so routes using req.user don’t break
+
     next();
   } catch (err) {
     return res.status(403).json({ error: "Invalid or expired token" });
@@ -246,9 +250,9 @@ console.log("IsValidObjectId:", mongoose.Types.ObjectId.isValid(req.params.id));
     if (!session) return res.status(404).json({ error: "Session not found" });
 
     // Permission: doctor assigned to session or admin
-    const userId = req.user._id.toString();
-    const isDoctorOrAdmin =
-      req.user.role === "admin" || (session.doctor && session.doctor.toString() === userId);
+   const userId = req.userId;
+const isDoctorOrAdmin =
+  req.userRole === "admin" || (session.doctor && session.doctor.toString() === userId);
 
     if (!isDoctorOrAdmin) {
       return res.status(403).json({ error: "Not authorized to change this session" });
