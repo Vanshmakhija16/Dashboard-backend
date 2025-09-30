@@ -137,13 +137,19 @@ router.post("/", authMiddleware, async (req, res) => {
     const endOfDay = new Date(slotDate);
     endOfDay.setHours(23, 59, 59, 999);
 
-    const todaySessions = await Session.countDocuments({
-      student: req.userId,
+    // ✅ Debug logs
+    console.log("Checking daily session limit for student:", req.userId);
+    console.log("Day range:", startOfDay, " -> ", endOfDay);
+
+    // ⚠️ Check which field is in Session schema: `student` vs `studentId`
+    const todaySessions = await Session.find({
+      student: req.userId, // change to `studentId` if that's your schema field
       slotStart: { $gte: startOfDay, $lte: endOfDay },
     });
-    console.log(todaySessions)
 
-    if (todaySessions >= 2) {
+    console.log("Existing sessions today:", todaySessions.length, todaySessions);
+
+    if (todaySessions.length >= 2) {
       return res.status(400).json({
         msg: "❌ You can book only 2 sessions per day. Please try again tomorrow.",
       });
@@ -210,7 +216,7 @@ router.post("/", authMiddleware, async (req, res) => {
 
     // Save session (auto-approved)
     const session = new Session({
-      student: req.userId,
+      student: req.userId, // change to `studentId` if schema uses that
       doctorId,
       patientName: student.name,
       mobile: studentMobile,
@@ -234,6 +240,7 @@ router.post("/", authMiddleware, async (req, res) => {
     res.status(500).json({ error: "Failed to book session" });
   }
 });
+
 
 
 
