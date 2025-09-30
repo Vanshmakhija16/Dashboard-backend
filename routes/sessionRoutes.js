@@ -103,18 +103,7 @@ Thank you for booking with us.`;
   }
 };
 
-// --------------------
 // Book a new session
-// --------------------
-// Book a new session
-// --------------------
-import express from "express";
-import User from "../models/User.js";
-import Doctor from "../models/Doctor.js";
-import Session from "../models/Session.js";
-import { authMiddleware } from "../middlewares/auth.js";
-import { sendNotifications } from "../utils/notifications.js"; // ✅ ensure this exists
-
 
 router.post("/", authMiddleware, async (req, res) => {
   try {
@@ -257,9 +246,6 @@ router.post("/", authMiddleware, async (req, res) => {
     res.status(500).json({ error: "Failed to book session" });
   }
 });
-
-
-
 
 
 router.put("/:id/status", authMiddleware, async (req, res) => {
