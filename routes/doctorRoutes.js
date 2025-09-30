@@ -729,6 +729,7 @@ router.get("/:id/available-dates", validateObjectId, async (req, res) => {
   try {
     const days = parseInt(req.query.days, 10) || 14;
     const doctor = await Doctor.findById(req.params.id).select("-password");
+
     if (!doctor) {
       return res.status(404).json({ success: false, message: "Doctor not found" });
     }
@@ -736,7 +737,7 @@ router.get("/:id/available-dates", validateObjectId, async (req, res) => {
     // ✅ Get booked sessions for this doctor
     const bookedSessions = await Session.find({
       doctorId: doctor._id,
-      status: { $ne: "cancelled" }
+      status: { $ne: "cancelled" },
     }).lean();
 
     // ✅ Logged-in user (Vansh's ID, for example)
@@ -744,7 +745,7 @@ router.get("/:id/available-dates", validateObjectId, async (req, res) => {
 
     // --- START: LOGIC FOR GLOBAL 2-SESSION LIMIT PER USER ---
     let userTotalActiveSessions = 0;
-    let earliestActiveSessionDate = null; 
+    let earliestActiveSessionDate = null;
 
     if (userId) {
       // **CRITICAL: This filter ensures only the CURRENT USER'S sessions are counted.**
@@ -769,8 +770,6 @@ router.get("/:id/available-dates", validateObjectId, async (req, res) => {
     today.setHours(0, 0, 0, 0);
 
     // ✅ Implement the global block rule:
-    // This only blocks the current user (Vansh) if they have reached their limit (2)
-    // and the date of their earliest session has not passed.
     let blockedUntilDate = null;
 
     if (
@@ -838,7 +837,7 @@ router.get("/:id/available-dates", validateObjectId, async (req, res) => {
           slotDateTime.setSeconds(0, 0);
           const slotISO = slotDateTime.toISOString();
 
-          // This blocks slots booked by ANY user (Rahul, Vansh, etc.)
+          // This blocks slots booked by ANY user
           return !bookedMap.has(slotISO) && slot.isAvailable !== false;
         });
 
@@ -857,12 +856,5 @@ router.get("/:id/available-dates", validateObjectId, async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
-
-
-
-
-
-
-
 
 export default router;
