@@ -500,6 +500,7 @@ Thank you for booking with us.`;
 
 // --------------------
 // Book a new session
+// --------------------
 router.post("/", authMiddleware, async (req, res) => {
   try {
     // ✅ Only students allowed
@@ -623,15 +624,9 @@ router.post("/", authMiddleware, async (req, res) => {
   }
 });
 
-
-
 // --------------------
-// Other routes remain unchanged below (status update, get sessions, etc.)
-// Copy your existing other route handlers (update status, GET /, GET /my-sessions, etc.)
-// I will include them here unchanged so the file remains self-contained.
-// --------------------
-
 // Update session status
+// --------------------
 router.put("/:id/status", authMiddleware, async (req, res) => {
   try {
     const allSessions = await Session.find({});
@@ -683,7 +678,9 @@ router.put("/:id/status", authMiddleware, async (req, res) => {
   }
 });
 
+// --------------------
 // Get all sessions of logged-in student
+// --------------------
 router.get("/", authMiddleware, async (req, res) => {
   try {
     const sessions = await Session.find({ student: req.userId })
@@ -696,7 +693,9 @@ router.get("/", authMiddleware, async (req, res) => {
   }
 });
 
+// --------------------
 // Doctor dashboard: get sessions
+// --------------------
 router.get("/my-sessions", authMiddleware, async (req, res) => {
   try {
     if (req.userRole !== "doctor") {
@@ -706,11 +705,17 @@ router.get("/my-sessions", authMiddleware, async (req, res) => {
     const { date, day, startTime, endTime } = req.query;
     let filter = { doctorId: req.userId };
 
-    if (date)
+    if (date) {
+      const dateObj = new Date(date + "T00:00:00");
+      if (isNaN(dateObj)) {
+        return res.status(400).json({ error: "Invalid date parameter" });
+      }
+
       filter.slotStart = {
-        $gte: new Date(date + "T00:00:00"),
+        $gte: dateObj,
         $lte: new Date(date + "T23:59:59"),
       };
+    }
 
     if (day) {
       const days = [
@@ -733,10 +738,20 @@ router.get("/my-sessions", authMiddleware, async (req, res) => {
 
     if (startTime || endTime) {
       const timeFilter = {};
-      if (startTime)
-        timeFilter.$gte = new Date("1970-01-01T" + startTime + ":00Z").toISOString();
-      if (endTime)
-        timeFilter.$lte = new Date("1970-01-01T" + endTime + ":00Z").toISOString();
+      if (startTime) {
+        const startTimeDate = new Date("1970-01-01T" + startTime + ":00Z");
+        if (isNaN(startTimeDate)) {
+          return res.status(400).json({ error: "Invalid startTime parameter" });
+        }
+        timeFilter.$gte = startTimeDate.toISOString();
+      }
+      if (endTime) {
+        const endTimeDate = new Date("1970-01-01T" + endTime + ":00Z");
+        if (isNaN(endTimeDate)) {
+          return res.status(400).json({ error: "Invalid endTime parameter" });
+        }
+        timeFilter.$lte = endTimeDate.toISOString();
+      }
       filter.slotStart = { ...filter.slotStart, ...timeFilter };
     }
 

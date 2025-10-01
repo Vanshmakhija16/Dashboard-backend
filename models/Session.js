@@ -56,7 +56,7 @@ const sessionSchema = new mongoose.Schema(
 
 // ✅ No need for virtual that always checks "booked"
 sessionSchema.virtual("isBooked").get(function () {
-  return this.status === "booked";
+  return this.status == "booked";
 });
 
 const Session = mongoose.model("Session", sessionSchema);
