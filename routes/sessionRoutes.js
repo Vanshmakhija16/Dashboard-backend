@@ -502,87 +502,53 @@ Thank you for booking with us.`;
 // Book a new session
 router.post("/", authMiddleware, async (req, res) => {
   try {
+    // ✅ Only students allowed
     if (req.userRole !== "student") {
       return res.status(403).json({ error: "Access denied: students only" });
     }
 
     const { doctorId, slotStart: rawSlotStart, slotEnd: rawSlotEnd, notes, mode } = req.body;
-    console.log("📩 Incoming request body:", req.body);
+    console.log("📩 Incoming booking request:", req.body);
 
+    // ✅ Basic validation
     if (!doctorId || !rawSlotStart || !rawSlotEnd || !mode) {
       return res.status(400).json({
         error: "Doctor ID, slotStart, slotEnd, and mode are required",
       });
     }
 
-    // Convert to Date objects
+    // ✅ Convert slot times to Date objects
     const slotStartDate = new Date(rawSlotStart);
     const slotEndDate = new Date(rawSlotEnd);
-
     if (isNaN(slotStartDate) || isNaN(slotEndDate)) {
       return res.status(400).json({ error: "Invalid slotStart or slotEnd datetime" });
     }
 
-    // ----------------------------
-    // Fetch student
-    // ----------------------------
+    // ✅ Fetch student
     const student = await User.findById(req.userId);
     if (!student) return res.status(404).json({ error: "Student not found" });
 
-    // ----------------------------
-    // Restriction: max 2 sessions per day
-    // ----------------------------
-    const dayStart = new Date(slotStartDate);
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(slotStartDate);
-    dayEnd.setHours(23, 59, 59, 999);
-
-    const todaySessions = await Session.find({
-      student: req.userId,
-      slotStart: { $gte: dayStart, $lte: dayEnd },
-      status: { $nin: ["cancelled", "rejected"] },
-    });
-
-    console.log("📌 Existing active sessions today:", todaySessions.length);
-
-    if (todaySessions.length >= 2) {
-      return res.status(400).json({
-        error: "❌ You can book only 2 active sessions per day. Please try again tomorrow.",
-      });
-    }
-
-    // ----------------------------
-    // Normalize mode
-    // ----------------------------
-    const modeValue = typeof mode === "string" && mode.length
-      ? mode.charAt(0).toUpperCase() + mode.slice(1).toLowerCase()
-      : null;
-
-    if (!modeValue || !["Online", "Offline"].includes(modeValue)) {
+    // ✅ Normalize mode
+    const modeValue = mode.charAt(0).toUpperCase() + mode.slice(1).toLowerCase();
+    if (!["Online", "Offline"].includes(modeValue)) {
       return res.status(400).json({ error: "Invalid mode. Must be 'Online' or 'Offline'" });
     }
 
-    // ----------------------------
-    // Fetch doctor and check availability
-    // ----------------------------
+    // ✅ Fetch doctor and check availability
     const doctor = await Doctor.findById(doctorId);
     if (!doctor) return res.status(404).json({ error: "Doctor not found" });
     if (doctor.isAvailable !== "available") {
       return res.status(400).json({ error: "Doctor is not available for booking" });
     }
 
-    // ----------------------------
-    // Extract date & HH:mm for slot checking
-    // ----------------------------
+    // ✅ Prepare slot for checking
     const bookingDate = slotStartDate.toISOString().split("T")[0]; // YYYY-MM-DD
     const bookingStartTime = slotStartDate.toTimeString().slice(0, 5); // HH:mm
     const bookingEndTime = slotEndDate.toTimeString().slice(0, 5);
 
-    console.log("📌 Trying to book slot:", { bookingDate, bookingStartTime, bookingEndTime });
+    console.log("📌 Booking slot:", { bookingDate, bookingStartTime, bookingEndTime });
 
-    // ----------------------------
-    // Ensure doctor slots exist
-    // ----------------------------
+    // ✅ Ensure doctor has slots for this date
     if (
       (doctor.dateSlots instanceof Map && !doctor.dateSlots.has(bookingDate)) ||
       (!(doctor.dateSlots instanceof Map) && !doctor.dateSlots?.[bookingDate])
@@ -590,23 +556,21 @@ router.post("/", authMiddleware, async (req, res) => {
       const fallbackSlots = doctor.getAvailabilityForDate
         ? doctor.getAvailabilityForDate(bookingDate)
         : [];
-      const normalizedFallback = (fallbackSlots || []).map(s => ({ ...s }));
+      const normalizedSlots = (fallbackSlots || []).map(s => ({ ...s }));
       if (doctor.dateSlots instanceof Map) {
-        doctor.dateSlots.set(bookingDate, normalizedFallback);
+        doctor.dateSlots.set(bookingDate, normalizedSlots);
       } else {
         doctor.dateSlots = doctor.dateSlots || {};
-        doctor.dateSlots[bookingDate] = normalizedFallback;
+        doctor.dateSlots[bookingDate] = normalizedSlots;
       }
-      doctor.markModified && doctor.markModified("dateSlots");
+      doctor.markModified?.("dateSlots");
       await doctor.save();
     }
 
-    // ----------------------------
-    // Check if requested slot is available
-    // ----------------------------
+    // ✅ Check if requested slot is available
     const slots = doctor.dateSlots instanceof Map
       ? doctor.dateSlots.get(bookingDate)
-      : (doctor.dateSlots?.[bookingDate] || []);
+      : doctor.dateSlots?.[bookingDate] || [];
 
     const slotIndex = slots.findIndex(
       slot => slot.startTime === bookingStartTime &&
@@ -618,20 +582,18 @@ router.post("/", authMiddleware, async (req, res) => {
       return res.status(400).json({ error: "Selected slot is already booked or not available" });
     }
 
-    // Mark slot as booked
+    // ✅ Mark slot as booked
     slots[slotIndex].isAvailable = false;
     if (doctor.dateSlots instanceof Map) {
       doctor.dateSlots.set(bookingDate, slots);
     } else {
       doctor.dateSlots[bookingDate] = slots;
     }
-    doctor.markModified && doctor.markModified("dateSlots");
+    doctor.markModified?.("dateSlots");
     await doctor.save();
-    console.log("📌 Slot marked booked on doctor record");
+    console.log("📌 Slot booked successfully on doctor record");
 
-    // ----------------------------
-    // Create session
-    // ----------------------------
+    // ✅ Create session
     const session = new Session({
       student: req.userId,
       doctorId,
@@ -647,7 +609,7 @@ router.post("/", authMiddleware, async (req, res) => {
     await session.save();
     console.log("✅ Session saved:", session._id);
 
-    // Optionally notify
+    // ✅ Send notifications (optional)
     await sendNotifications(session);
 
     res.status(201).json({
@@ -660,6 +622,7 @@ router.post("/", authMiddleware, async (req, res) => {
     res.status(500).json({ error: "Failed to book session" });
   }
 });
+
 
 
 // --------------------
