@@ -505,6 +505,9 @@ Thank you for booking with us.`;
 // --------------------
 // Replace your existing booking route with the code below
 router.post("/", authMiddleware, async (req, res) => {
+  console.log("📩 Incoming body:", req.body);
+console.log("📩 slotStart:", req.body.slotStart, "slotEnd:", req.body.slotEnd);
+
   try {
     console.log("📩 Incoming booking request body:", req.body);
 
@@ -730,6 +733,7 @@ router.post("/", authMiddleware, async (req, res) => {
       session,
     });
   } catch (error) {
+    console.log("📩 Incoming booking request body:", req.body);
     console.error("❌ Error booking session:", error);
     res.status(500).json({ error: "Failed to book session" });
   }
