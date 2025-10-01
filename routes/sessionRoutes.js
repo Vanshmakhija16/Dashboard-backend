@@ -512,10 +512,10 @@ router.post("/", authMiddleware, async (req, res) => {
       return res.status(403).json({ error: "Access denied: students only" });
     }
 
-    // Accept either:
-    // - { doctorId, slotStart: "ISO" or "HH:mm", slotEnd: "ISO" or "HH:mm", date?: "YYYY-MM-DD", notes, mode }
+  console.log("📩 Incoming request body:", req.body);
     const { doctorId, slotStart: rawSlotStart, slotEnd: rawSlotEnd, date: providedDate, notes, mode } = req.body;
-
+    console.log("➡️ slotStart raw:", slotStart);
+    console.log("➡️ slotEnd raw:", slotEnd);
     if (!doctorId || !rawSlotStart || !rawSlotEnd || !mode) {
       return res.status(400).json({
         error: "Doctor ID, slotStart, slotEnd, and mode are required",
