@@ -498,14 +498,7 @@ Thank you for booking with us.`;
   }
 };
 
-// --------------------
 // Book a new session
-// Accepts two input modes from frontend:
-// 1) frontend sends full ISO timestamps for slotStart and slotEnd (e.g. "2025-10-01T09:00:00.000Z")
-//    -> code will parse and use them.
-// 2) frontend sends `date` ("YYYY-MM-DD") and slotStart/slotEnd as "HH:mm" -> code will build ISO datetimes.
-// Backend will always store slotStart and slotEnd in the session as full ISO strings.
-// --------------------
 router.post("/", authMiddleware, async (req, res) => {
   try {
     if (req.userRole !== "student") {
@@ -602,6 +595,7 @@ router.post("/", authMiddleware, async (req, res) => {
 
     if (todaySessions.length >= 2) {
       return res.status(400).json({
+        console.log("hello"),
         msg: "❌ You can book only 2 active sessions per day. Please try again tomorrow.",
       });
     }
