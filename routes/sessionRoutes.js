@@ -371,24 +371,25 @@
 // });
 
 // export default router;
+// routes/sessionRoutes.js
 import express from "express";
 import mongoose from "mongoose";
 import Session from "../models/Session.js";
 import Doctor from "../models/Doctor.js";
-import User from "../models/User.js"; 
+import User from "../models/User.js";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
-import dotenv from "dotenv"
+import dotenv from "dotenv";
 
 const router = express.Router();
-dotenv.config()
+dotenv.config();
 
 // --------------------
 // Email transporter
 // --------------------
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
-  port: parseInt(process.env.SMTP_PORT),
+  port: parseInt(process.env.SMTP_PORT, 10),
   secure: process.env.SMTP_SECURE === "true",
   auth: {
     user: process.env.SMTP_USER,
@@ -407,11 +408,9 @@ const authMiddleware = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
     req.userId = decoded.id;
     req.userRole = decoded.role;
     req.user = { id: decoded.id, role: decoded.role };
-
     next();
   } catch (err) {
     return res.status(403).json({ error: "Invalid or expired token" });
@@ -423,36 +422,56 @@ const authMiddleware = (req, res, next) => {
 // --------------------
 const formatTime = (date) => {
   const d = new Date(date);
+  // If invalid date, return null
+  if (isNaN(d)) return null;
   return d.toISOString().substring(11, 16); // e.g. "09:00", "14:15"
+};
+
+// --------------------
+// Helper: build ISO datetime from date + time
+//  - date: "YYYY-MM-DD"
+//  - time: "HH:mm"
+// returns ISO string or null if invalid
+// --------------------
+const buildISOFromDateAndTime = (dateStr, timeStr) => {
+  if (!dateStr || !timeStr) return null;
+  // normalize time (ensure "HH:mm")
+  const timeMatch = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(timeStr);
+  if (!timeMatch) return null;
+  // create ISO local datetime (no timezone shift) using `dateStr + 'T' + time + ':00'`
+  const iso = new Date(`${dateStr}T${timeStr}:00`);
+  if (isNaN(iso)) return null;
+  return iso.toISOString();
 };
 
 // --------------------
 // Helper: Send email notifications
 // --------------------
 const sendNotifications = async (session) => {
-  const student = await User.findById(session.student);
-  const doctor = await Doctor.findById(session.doctorId);
-  const adminEmail = "vanshmakhija18@gmail.com";
+  try {
+    const student = await User.findById(session.student);
+    const doctor = await Doctor.findById(session.doctorId);
+    const adminEmail = process.env.ADMIN_EMAIL || process.env.ADMINEMAIL || "admin@example.com";
 
-  const studentName = student?.name || "Student";
-  const doctorName = doctor?.name || "Doctor";
+    const studentName = student?.name || "Student";
+    const doctorName = doctor?.name || "Doctor";
 
-  const studentEmail = "kvmakhija1624@gmail.com";
-  const doctorEmail = "www.vansh1624@gmail.com";
+    const studentEmail = student?.email || null;
+    const doctorEmail = doctor?.email || null;
 
-  const date = new Date(session.slotStart).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-  const time = new Date(session.slotStart).toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
+    const date = new Date(session.slotStart).toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+    const time = new Date(session.slotStart).toLocaleTimeString(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
 
-  const subject = "✅ Your session is confirmed";
-  const text = `Session Details:
+    const subject = "✅ Your session is confirmed";
+    const text = `Session Details:
 
 Student: ${studentName}
 Doctor: ${doctorName}
@@ -463,25 +482,29 @@ Notes: ${session.notes || "N/A"}
 
 Thank you for booking with us.`;
 
-  const recipients = [studentEmail, doctorEmail, adminEmail].filter(Boolean);
+    const recipients = [studentEmail, doctorEmail, adminEmail].filter(Boolean);
 
-  try {
     for (const email of recipients) {
       await transporter.sendMail({
-        from: process.env.SMTP_FROM,
+        from: process.env.SMTP_FROM || process.env.SMTPFROM || "no-reply@example.com",
         to: email,
         subject,
         text,
       });
-      console.log(`Email sent to ${email}`);
     }
   } catch (err) {
     console.error("Failed to send email:", err);
+    // not fatal for booking
   }
 };
 
 // --------------------
 // Book a new session
+// Accepts two input modes from frontend:
+// 1) frontend sends full ISO timestamps for slotStart and slotEnd (e.g. "2025-10-01T09:00:00.000Z")
+//    -> code will parse and use them.
+// 2) frontend sends `date` ("YYYY-MM-DD") and slotStart/slotEnd as "HH:mm" -> code will build ISO datetimes.
+// Backend will always store slotStart and slotEnd in the session as full ISO strings.
 // --------------------
 router.post("/", authMiddleware, async (req, res) => {
   try {
@@ -489,30 +512,81 @@ router.post("/", authMiddleware, async (req, res) => {
       return res.status(403).json({ error: "Access denied: students only" });
     }
 
-    let { doctorId, slotStart, slotEnd, notes, mode, date } = req.body;
+    // Accept either:
+    // - { doctorId, slotStart: "ISO" or "HH:mm", slotEnd: "ISO" or "HH:mm", date?: "YYYY-MM-DD", notes, mode }
+    const { doctorId, slotStart: rawSlotStart, slotEnd: rawSlotEnd, date: providedDate, notes, mode } = req.body;
 
-    if (!doctorId || !slotStart || !slotEnd || !mode || !date) {
+    if (!doctorId || !rawSlotStart || !rawSlotEnd || !mode) {
       return res.status(400).json({
-        error: "Doctor ID, date, slotStart, slotEnd, and mode are required",
+        error: "Doctor ID, slotStart, slotEnd, and mode are required",
       });
     }
 
-    // 👉 Fix: If frontend sends only "HH:mm", combine with provided `date`
-    if (/^\d{2}:\d{2}$/.test(slotStart) && /^\d{2}:\d{2}$/.test(slotEnd)) {
-      slotStart = new Date(`${date}T${slotStart}:00`).toISOString();
-      slotEnd = new Date(`${date}T${slotEnd}:00`).toISOString();
+    // Build final ISO slotStart/slotEnd (strings)
+    let finalSlotStartISO = null;
+    let finalSlotEndISO = null;
+
+    const isTimeOnly = (s) => typeof s === "string" && /^([01]?\d|2[0-3]):([0-5]\d)$/.test(s);
+    const isISOish = (s) => typeof s === "string" && (s.includes("T") || s.endsWith("Z"));
+
+    if (isTimeOnly(rawSlotStart) && isTimeOnly(rawSlotEnd)) {
+      // require providedDate
+      if (!providedDate || !/^\d{4}-\d{2}-\d{2}$/.test(providedDate)) {
+        return res.status(400).json({ error: "When sending time-only slots, include date as YYYY-MM-DD" });
+      }
+      finalSlotStartISO = buildISOFromDateAndTime(providedDate, rawSlotStart);
+      finalSlotEndISO = buildISOFromDateAndTime(providedDate, rawSlotEnd);
+
+      if (!finalSlotStartISO || !finalSlotEndISO) {
+        return res.status(400).json({ error: "Invalid date or time format. date must be YYYY-MM-DD, times HH:mm" });
+      }
+    } else if (isISOish(rawSlotStart) && isISOish(rawSlotEnd)) {
+      // Use as-is (let Date validate)
+      const sStart = new Date(rawSlotStart);
+      const sEnd = new Date(rawSlotEnd);
+      if (isNaN(sStart) || isNaN(sEnd)) {
+        return res.status(400).json({ error: "Invalid ISO datetime provided for slotStart/slotEnd" });
+      }
+      finalSlotStartISO = sStart.toISOString();
+      finalSlotEndISO = sEnd.toISOString();
+    } else {
+      // Mixed or unknown format: attempt to be helpful
+      // If user sent date + one time and another ISO, handle mixed cases:
+      if (providedDate && isTimeOnly(rawSlotStart) && isISOish(rawSlotEnd)) {
+        finalSlotStartISO = buildISOFromDateAndTime(providedDate, rawSlotStart);
+        finalSlotEndISO = new Date(rawSlotEnd).toISOString();
+      } else if (providedDate && isISOish(rawSlotStart) && isTimeOnly(rawSlotEnd)) {
+        finalSlotStartISO = new Date(rawSlotStart).toISOString();
+        finalSlotEndISO = buildISOFromDateAndTime(providedDate, rawSlotEnd);
+      } else {
+        return res.status(400).json({ error: "slotStart and slotEnd must be either both HH:mm (with date) or both ISO datetimes" });
+      }
+
+      if (!finalSlotStartISO || !finalSlotEndISO) {
+        return res.status(400).json({ error: "Failed to construct valid slot datetimes" });
+      }
     }
 
+    // Convert to Date for server-side logic
+    const slotStartDate = new Date(finalSlotStartISO);
+    const slotEndDate = new Date(finalSlotEndISO);
+
+    if (isNaN(slotStartDate) || isNaN(slotEndDate)) {
+      console.error("Invalid constructed dates:", finalSlotStartISO, finalSlotEndISO);
+      return res.status(400).json({ error: "Invalid slot start/end datetimes" });
+    }
+
+    // Get logged-in student info
     const student = await User.findById(req.userId);
     if (!student) return res.status(404).json({ error: "Student not found" });
 
     // ----------------------------
     // Restriction: max 2 sessions per day
     // ----------------------------
-    const slotDate = new Date(slotStart);
-    const startOfDay = new Date(slotDate);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(slotDate);
+    const slotDateOnly = new Date(slotStartDate);
+    slotDateOnly.setHours(0, 0, 0, 0);
+    const startOfDay = new Date(slotDateOnly);
+    const endOfDay = new Date(slotDateOnly);
     endOfDay.setHours(23, 59, 59, 999);
 
     console.log("📌 Checking daily session limit for student:", req.userId);
@@ -521,7 +595,7 @@ router.post("/", authMiddleware, async (req, res) => {
     const todaySessions = await Session.find({
       student: req.userId,
       slotStart: { $gte: startOfDay, $lte: endOfDay },
-      status: { $nin: ["cancelled", "rejected"] }, // ✅ ignore cancelled/rejected
+      status: { $nin: ["cancelled", "rejected"] }, // ignore cancelled/rejected
     });
 
     console.log("📌 Existing active sessions today:", todaySessions.length);
@@ -531,104 +605,102 @@ router.post("/", authMiddleware, async (req, res) => {
         msg: "❌ You can book only 2 active sessions per day. Please try again tomorrow.",
       });
     }
+
     // ----------------------------
-
-    const studentMobile = student.mobile || "N/A";
-
     // Normalize mode
-    const modeValue =
-      mode.charAt(0).toUpperCase() + mode.slice(1).toLowerCase();
-    if (!["Online", "Offline"].includes(modeValue)) {
-      return res
-        .status(400)
-        .json({ error: "Invalid mode. Must be 'Online' or 'Offline'" });
+    // ----------------------------
+    const modeValue = typeof mode === "string" && mode.length ? mode.charAt(0).toUpperCase() + mode.slice(1).toLowerCase() : null;
+    if (!modeValue || !["Online", "Offline"].includes(modeValue)) {
+      return res.status(400).json({ error: "Invalid mode. Must be 'Online' or 'Offline'" });
     }
 
-    // Fetch doctor
+    // ----------------------------
+    // Fetch doctor and check availability
+    // ----------------------------
     const doctor = await Doctor.findById(doctorId);
-    if (!doctor || doctor.isAvailable !== "available") {
-      return res
-        .status(400)
-        .json({ error: "Doctor is not available for booking" });
+    if (!doctor) {
+      return res.status(404).json({ error: "Doctor not found" });
+    }
+    if (doctor.isAvailable !== "available") {
+      return res.status(400).json({ error: "Doctor is not available for booking" });
     }
 
-    // Ensure slot format matches doctor’s availability
-    const dateKey = new Date(slotStart).toISOString().split("T")[0];
-    const slotStartTime = formatTime(new Date(slotStart)); 
-    const slotEndTime = formatTime(new Date(slotEnd));
+    // For doctor slot checks we need date in YYYY-MM-DD and times as HH:mm
+    const bookingDate = finalSlotStartISO.split("T")[0]; // "YYYY-MM-DD"
+    const bookingStartTime = formatTime(slotStartDate);
+    const bookingEndTime = formatTime(slotEndDate);
 
-    console.log("📌 Trying to book slot:", {
-      date: dateKey,
-      slotStartTime,
-      slotEndTime,
-    });
+    if (!bookingStartTime || !bookingEndTime) {
+      return res.status(400).json({ error: "Failed to normalize slot times for booking" });
+    }
 
-    // Ensure slots exist for that date
+    console.log("📌 Trying to book slot:", { bookingDate, bookingStartTime, bookingEndTime });
+
+    // Ensure slots exist for that date in doctor's dateSlots; if not, generate fallback from weeklySchedule or todaySchedule
     if (
-      (doctor.dateSlots instanceof Map && !doctor.dateSlots.has(dateKey)) ||
-      (!(doctor.dateSlots instanceof Map) && !doctor.dateSlots[dateKey])
+      (doctor.dateSlots instanceof Map && !doctor.dateSlots.has(bookingDate)) ||
+      (!(doctor.dateSlots instanceof Map) && !doctor.dateSlots?.[bookingDate])
     ) {
-      console.log("ℹ️ No slots for this date, generating fallback...");
-      const fallbackSlots = doctor
-        .getAvailabilityForDate(dateKey)
-        .map((s) => ({ ...s }));
-
+      console.log("ℹ️ No slots for this date in doctor.dateSlots, creating fallback from weekly/today schedule");
+      const fallbackSlots = doctor.getAvailabilityForDate ? doctor.getAvailabilityForDate(bookingDate) : [];
+      // If getAvailabilityForDate returned HH:mm slots, keep as array of objects
+      const normalizedFallback = (fallbackSlots || []).map(s => ({ ...s }));
       if (doctor.dateSlots instanceof Map) {
-        doctor.dateSlots.set(dateKey, fallbackSlots);
+        doctor.dateSlots.set(bookingDate, normalizedFallback);
       } else {
-        doctor.dateSlots[dateKey] = fallbackSlots;
+        doctor.dateSlots = doctor.dateSlots || {};
+        doctor.dateSlots[bookingDate] = normalizedFallback;
       }
-
-      doctor.markModified("dateSlots");
+      doctor.markModified && doctor.markModified("dateSlots");
       await doctor.save();
     }
 
-    // Debug doctor slots
-    console.log("📌 Doctor slots for date:", dateKey, doctor.dateSlots[dateKey]);
+    // Get slots array
+    const slots = doctor.dateSlots instanceof Map ? doctor.dateSlots.get(bookingDate) : (doctor.dateSlots?.[bookingDate] || []);
 
-    // Check slot availability
-    const isAvailable = doctor.isAvailableAtDateTime(
-      dateKey,
-      slotStartTime,
-      slotEndTime
-    );
-    console.log("📌 Slot available?", isAvailable);
+    // Check if requested HH:mm slot exists and is available
+    const isAvailable = Array.isArray(slots) && slots.some(slot => slot.startTime === bookingStartTime && slot.endTime === bookingEndTime && slot.isAvailable !== false);
 
     if (!isAvailable) {
-      return res.status(400).json({ error: "Selected slot is already booked" });
+      return res.status(400).json({ error: "Selected slot is already booked or not available" });
     }
 
-    // Mark slot as booked
-    const booked = await doctor.bookSlot(dateKey, slotStartTime, slotEndTime);
-    console.log("📌 Slot booking result:", booked);
-
-    if (!booked) {
-      return res.status(400).json({
-        error: "Failed to book slot. It may have just been taken.",
-      });
+    // Mark slot as booked (update doctor.dateSlots)
+    const slotIndex = slots.findIndex(slot => slot.startTime === bookingStartTime && slot.endTime === bookingEndTime);
+    if (slotIndex !== -1) {
+      slots[slotIndex].isAvailable = false;
+      if (doctor.dateSlots instanceof Map) {
+        doctor.dateSlots.set(bookingDate, slots);
+      } else {
+        doctor.dateSlots[bookingDate] = slots;
+      }
+      doctor.markModified && doctor.markModified("dateSlots");
+      await doctor.save();
+      console.log("📌 Slot marked booked on doctor record");
+    } else {
+      return res.status(400).json({ error: "Failed to book slot. It may have just been taken." });
     }
 
-    // Create session
+    // ----------------------------
+    // Create session (store full ISO datetimes)
+    // ----------------------------
     const session = new Session({
       student: req.userId,
       doctorId,
       patientName: student.name,
-      mobile: studentMobile,
-      slotStart,
-      slotEnd,
+      mobile: student.mobile || "N/A",
+      slotStart: slotStartDate.toISOString(),
+      slotEnd: slotEndDate.toISOString(),
       notes,
       mode: modeValue,
-      status: "booked", // ✅ always consistent
+      status: "booked",
     });
 
     await session.save();
-
     console.log("✅ Session saved:", session._id);
 
-    // Send notifications
-    if (typeof sendNotifications === "function") {
-      await sendNotifications(session);
-    }
+    // Optionally notify
+    await sendNotifications(session);
 
     res.status(201).json({
       message: "✅ Session booked successfully",
@@ -636,13 +708,18 @@ router.post("/", authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Error booking session:", error);
+    // Give slightly more detail for dev, but not exposing internals
     res.status(500).json({ error: "Failed to book session" });
   }
 });
 
 // --------------------
-// Update session status
+// Other routes remain unchanged below (status update, get sessions, etc.)
+// Copy your existing other route handlers (update status, GET /, GET /my-sessions, etc.)
+// I will include them here unchanged so the file remains self-contained.
 // --------------------
+
+// Update session status
 router.put("/:id/status", authMiddleware, async (req, res) => {
   try {
     const allSessions = await Session.find({});
@@ -659,9 +736,7 @@ router.put("/:id/status", authMiddleware, async (req, res) => {
       (session.doctorId && session.doctorId.toString() === userId);
 
     if (!isDoctorOrAdmin) {
-      return res
-        .status(403)
-        .json({ error: "Not authorized to change this session" });
+      return res.status(403).json({ error: "Not authorized to change this session" });
     }
 
     const { status } = req.body;
@@ -696,9 +771,7 @@ router.put("/:id/status", authMiddleware, async (req, res) => {
   }
 });
 
-// --------------------
 // Get all sessions of logged-in student
-// --------------------
 router.get("/", authMiddleware, async (req, res) => {
   try {
     const sessions = await Session.find({ student: req.userId })
@@ -706,13 +779,12 @@ router.get("/", authMiddleware, async (req, res) => {
       .sort({ slotStart: 1 });
     res.json(sessions);
   } catch (error) {
+    console.error("Failed to fetch sessions:", error);
     res.status(500).json({ error: "Failed to fetch sessions" });
   }
 });
 
-// --------------------
 // Doctor dashboard: get sessions
-// --------------------
 router.get("/my-sessions", authMiddleware, async (req, res) => {
   try {
     if (req.userRole !== "doctor") {
