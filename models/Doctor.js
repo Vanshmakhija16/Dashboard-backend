@@ -181,11 +181,17 @@ doctorSchema.methods.getUpcomingAvailability = function (days = 7) {
 
 // ✅ Check if available at specific date/time
 doctorSchema.methods.isAvailableAtDateTime = function (date, startTime, endTime) {
-  console.log("🔍 isAvailableAtDateTime called with:", { date, start, end });
-  console.log("📌 Slots stored for this date:", this.dateSlots[date]);
+  console.log("🔍 isAvailableAtDateTime called with:", { date, startTime, endTime });
+  console.log("📌 Slots stored for this date:", this.dateSlots ? this.dateSlots.get(date) : undefined);
+
   const slots = this.getAvailabilityForDate(date);
-  return slots.some(slot => slot.startTime <= startTime && slot.endTime >= endTime && slot.isAvailable);
+  return slots.some(slot => 
+    slot.startTime <= startTime && 
+    slot.endTime >= endTime && 
+    slot.isAvailable
+  );
 };
+
 
 // ✅ Book a slot
 doctorSchema.methods.bookSlot = async function (date, startTime, endTime) {
