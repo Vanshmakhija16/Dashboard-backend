@@ -590,7 +590,6 @@
 
 
 
-
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 
@@ -676,22 +675,22 @@ doctorSchema.methods.removeUniversity = async function (universityId) {
 };
 
 // ✅ Get availability for a specific date
-doctorSchema.methods.getAvailabilityForDate = function (date) {
-  // Always return only available slots
+doctorSchema.methods.getAvailabilityForDate = async function (date) {
   if (this.dateSlots && this.dateSlots.has(date)) {
     return this.dateSlots.get(date).filter(s => s.isAvailable);
   }
 
   const todayDate = new Date().toISOString().split("T")[0];
+
   if (date === todayDate && this.weeklySchedule && this.weeklySchedule.length > 0) {
     const days = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
     const dayName = days[new Date().getDay()];
     const weeklyDay = this.weeklySchedule.find(s => s.day === dayName);
+
     if (weeklyDay && weeklyDay.slots.length > 0) {
-      const slotsCopy = weeklyDay.slots.map(s => ({...s.toObject(), isAvailable: true}));
+      const slotsCopy = weeklyDay.slots.map(s => ({ ...s.toObject(), isAvailable: true }));
       this.dateSlots.set(date, slotsCopy);
       this.markModified('dateSlots');
-      this.save();
       return slotsCopy.filter(s => s.isAvailable);
     }
   }
@@ -707,9 +706,9 @@ doctorSchema.methods.getAvailabilityForDate = function (date) {
 };
 
 // ✅ Get today’s availability
-doctorSchema.methods.getTodaysAvailability = function () {
+doctorSchema.methods.getTodaysAvailability = async function () {
   const todayDate = new Date().toISOString().split("T")[0];
-  return this.getAvailabilityForDate(todayDate);
+  return await this.getAvailabilityForDate(todayDate);
 };
 
 // ✅ Set slots for a specific date
@@ -756,30 +755,21 @@ doctorSchema.methods.updateMultipleDateSlots = async function (dateSlotMap) {
 };
 
 // ✅ Get upcoming availability
-doctorSchema.methods.getUpcomingAvailability = function (days = 7) {
+doctorSchema.methods.getUpcomingAvailability = async function (days = 7) {
   const result = {};
   const today = new Date();
   for (let i = 0; i < days; i++) {
     const date = new Date(today);
     date.setDate(today.getDate() + i);
     const dateStr = date.toISOString().split("T")[0];
-    const slots = this.getAvailabilityForDate(dateStr);
+    const slots = await this.getAvailabilityForDate(dateStr);
     if (slots && slots.length > 0) result[dateStr] = slots;
   }
   return result;
 };
 
-// ✅ Check if available at specific date/time (FIXED)
-doctorSchema.methods.isAvailableAtDateTime = function (date, startTime, endTime) {
-  console.log("🔍 isAvailableAtDateTime called with:", { date, startTime, endTime });
-
-  const slots = this.getAvailabilityForDate(date);
-  if (!slots) {
-    console.log("⚠️ No slots found for this date");
-    return false;
-  }
-
-  // Helper to convert HH:mm → minutes
+// ✅ Check if available at specific date/time
+doctorSchema.methods.isAvailableAtDateTime = async function (date, startTime, endTime) {
   const toMinutes = (timeStr) => {
     const [h, m] = timeStr.split(":").map(Number);
     return h * 60 + m;
@@ -788,19 +778,14 @@ doctorSchema.methods.isAvailableAtDateTime = function (date, startTime, endTime)
   const reqStart = toMinutes(startTime);
   const reqEnd = toMinutes(endTime);
 
-  const available = slots.some(slot => {
+  const slots = await this.getAvailabilityForDate(date);
+  if (!slots || slots.length === 0) return false;
+
+  return slots.some(slot => {
     const slotStart = toMinutes(slot.startTime);
     const slotEnd = toMinutes(slot.endTime);
-
-    return (
-      slotStart === reqStart &&
-      slotEnd === reqEnd &&
-      slot.isAvailable
-    );
+    return slotStart <= reqStart && slotEnd >= reqEnd && slot.isAvailable;
   });
-
-  console.log("📌 Slot available?", available);
-  return available;
 };
 
 // ✅ Book a slot
@@ -810,40 +795,44 @@ doctorSchema.methods.bookSlot = async function (date, startTime, endTime) {
   if (!this.dateSlots.has(date)) {
     const dayName = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][new Date(date).getDay()];
     const weeklyDay = this.weeklySchedule.find(s => s.day === dayName);
-    this.dateSlots.set(date, weeklyDay ? weeklyDay.slots.map(s => ({...s.toObject(), isAvailable: true})) : []);
+    this.dateSlots.set(date, weeklyDay ? weeklyDay.slots.map(s => ({ ...s.toObject(), isAvailable: true })) : []);
   }
 
   const slots = this.dateSlots.get(date);
-  const slotIndex = slots.findIndex(slot => slot.startTime === startTime && slot.endTime === endTime);
-  if (slotIndex !== -1 && slots[slotIndex].isAvailable) {
-    slots[slotIndex].isAvailable = false;
-    this.dateSlots.set(date, slots);
-    this.markModified('dateSlots');
-    await this.save();
-    return true;
-  }
+  const slotIndex = slots.findIndex(slot =>
+    slot.startTime === startTime && slot.endTime === endTime && slot.isAvailable
+  );
 
-  return false;
+  if (slotIndex === -1) return false;
+
+  slots[slotIndex].isAvailable = false;
+  this.dateSlots.set(date, slots);
+  this.markModified('dateSlots');
+  await this.save();
+  return true;
 };
 
 // ✅ Unbook a slot
 doctorSchema.methods.unbookSlot = async function (date, startTime, endTime) {
   if (!this.dateSlots || !this.dateSlots.has(date)) return false;
+
   const slots = this.dateSlots.get(date);
-  const slotIndex = slots.findIndex(slot => slot.startTime === startTime && slot.endTime === endTime);
-  if (slotIndex !== -1 && !slots[slotIndex].isAvailable) {
-    slots[slotIndex].isAvailable = true;
-    this.dateSlots.set(date, slots);
-    this.markModified('dateSlots');
-    await this.save();
-    return true;
-  }
-  return false;
+  const slotIndex = slots.findIndex(slot =>
+    slot.startTime === startTime && slot.endTime === endTime && !slot.isAvailable
+  );
+
+  if (slotIndex === -1) return false;
+
+  slots[slotIndex].isAvailable = true;
+  this.dateSlots.set(date, slots);
+  this.markModified('dateSlots');
+  await this.save();
+  return true;
 };
 
 // ✅ Get total available slots
-doctorSchema.methods.getAvailableSlotsCount = function (date) {
-  const slots = this.getAvailabilityForDate(date);
+doctorSchema.methods.getAvailableSlotsCount = async function (date) {
+  const slots = await this.getAvailabilityForDate(date);
   return slots.length;
 };
 
