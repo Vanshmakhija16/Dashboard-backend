@@ -608,13 +608,13 @@ router.put("/unlock/:studentId/:assessmentId", async (req, res) => {
 
 
 // Get assigned assessments of a student
-router.get("/my/:studentId", async (req, res) => {
+router.get("/my", async (req, res) => {
   try {
-    const { studentId } = req.params;
-    const student = await User.findById(studentId);
-    if (!student) return res.status(404).json({ error: "Student not found" });
+    const student = await User.findById(req.userId); // <-- use logged-in user
+    if (!student || student.role !== "student") {
+      return res.status(404).json({ error: "Student not found or not a student" });
+    }
 
-    // Enrich response with meta data
     const detailed = (student.assessments || []).map((a) => {
       const meta = assessments.find((m) => m.id === a.assessmentId);
       return {
@@ -632,6 +632,7 @@ router.get("/my/:studentId", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 
 

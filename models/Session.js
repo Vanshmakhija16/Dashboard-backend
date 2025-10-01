@@ -43,7 +43,7 @@ const sessionSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: ["approved", "completed", "cancelled", "booked"], // ✅ added "booked"
-      default: "approved",
+      default: "booked",
     },
     completedAt: { type: Date, default: null },
 
