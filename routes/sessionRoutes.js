@@ -695,10 +695,7 @@ router.post("/", authMiddleware, async (req, res) => {
     const bookingEndTime = toLocalTimeHHMM(slotEndDate);
     console.log("📅 bookingStartTime:", bookingStartTime);
     console.log("📅 bookingEndTime:", bookingEndTime);
-    console.log(
-      "🎯 slots on doctor:",
-      slots.map((s) => `${s.startTime}-${s.endTime} (${s.isAvailable})`)
-    );
+
 
     if (
       (doctor.dateSlots instanceof Map && !doctor.dateSlots.has(bookingDate)) ||
@@ -728,6 +725,10 @@ router.post("/", authMiddleware, async (req, res) => {
         slot.startTime === bookingStartTime &&
         slot.endTime === bookingEndTime &&
         slot.isAvailable !== false
+    );
+        console.log(
+      "🎯 slots on doctor:",
+      slots.map((s) => `${s.startTime}-${s.endTime} (${s.isAvailable})`)
     );
 
     if (slotIndex === -1) {
