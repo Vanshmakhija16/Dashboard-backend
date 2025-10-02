@@ -505,7 +505,7 @@ Thank you for booking with us.`;
 // Replace your existing booking route with the code below
 router.post("/", authMiddleware, async (req, res) => {
   console.log("📩 Incoming body:", req.body);
-  console.log(
+   console.log(
     "📩 slotStart:",
     req.body.slotStart,
     "slotEnd:",
@@ -726,6 +726,8 @@ router.post("/", authMiddleware, async (req, res) => {
         slot.endTime === bookingEndTime &&
         slot.isAvailable !== false
     );
+    
+         console.log(slotIndex)
         console.log(
       "🎯 slots on doctor:",
       slots.map((s) => `${s.startTime}-${s.endTime} (${s.isAvailable})`)
