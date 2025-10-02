@@ -685,10 +685,13 @@ router.post("/", authMiddleware, async (req, res) => {
     // ----------------------------
     const bookingDate = slotStartDate.toISOString().split("T")[0]; // YYYY-MM-DD
     const toLocalTimeHHMM = (date) => {
-      const local = new Date(date);
-      const hours = local.getHours().toString().padStart(2, "0");
-      const minutes = local.getMinutes().toString().padStart(2, "0");
-      return `${hours}:${minutes}`;
+      const localTime = new Date(date).toLocaleTimeString("en-GB", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+        timeZone: "Asia/Kolkata", // or your actual local timezone
+      });
+      return localTime;
     };
 
     const bookingStartTime = toLocalTimeHHMM(slotStartDate);
@@ -727,7 +730,6 @@ router.post("/", authMiddleware, async (req, res) => {
         slot.isAvailable !== false
     );
     
-         console.log(slotIndex)
         console.log(
       "🎯 slots on doctor:",
       slots.map((s) => `${s.startTime}-${s.endTime} (${s.isAvailable})`)
