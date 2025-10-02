@@ -2,7 +2,7 @@
 // import mongoose from "mongoose";
 // import Session from "../models/Session.js";
 // import Doctor from "../models/Doctor.js";
-// import User from "../models/User.js"; 
+// import User from "../models/User.js";
 // import jwt from "jsonwebtoken";
 // import nodemailer from "nodemailer";
 // import dotenv from "dotenv"
@@ -246,7 +246,6 @@
 //   }
 // });
 
-
 // router.put("/:id/status", authMiddleware, async (req, res) => {
 //   try {
 //     const allSessions = await Session.find({});
@@ -301,9 +300,6 @@
 //     res.status(500).json({ error: err.message });
 //   }
 // });
-
-
-
 
 // // --------------------
 // // Get all sessions of logged-in student
@@ -382,7 +378,6 @@ import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 console.log("📦 sessionRoutes loaded");
 
-
 const router = express.Router();
 dotenv.config();
 
@@ -453,7 +448,8 @@ const sendNotifications = async (session) => {
   try {
     const student = await User.findById(session.student);
     const doctor = await Doctor.findById(session.doctorId);
-    const adminEmail = process.env.ADMIN_EMAIL || process.env.ADMINEMAIL || "admin@example.com";
+    const adminEmail =
+      process.env.ADMIN_EMAIL || process.env.ADMINEMAIL || "admin@example.com";
 
     const studentName = student?.name || "Student";
     const doctorName = doctor?.name || "Doctor";
@@ -488,7 +484,10 @@ Thank you for booking with us.`;
 
     for (const email of recipients) {
       await transporter.sendMail({
-        from: process.env.SMTP_FROM || process.env.SMTPFROM || "no-reply@example.com",
+        from:
+          process.env.SMTP_FROM ||
+          process.env.SMTPFROM ||
+          "no-reply@example.com",
         to: email,
         subject,
         text,
@@ -506,7 +505,12 @@ Thank you for booking with us.`;
 // Replace your existing booking route with the code below
 router.post("/", authMiddleware, async (req, res) => {
   console.log("📩 Incoming body:", req.body);
-console.log("📩 slotStart:", req.body.slotStart, "slotEnd:", req.body.slotEnd);
+  console.log(
+    "📩 slotStart:",
+    req.body.slotStart,
+    "slotEnd:",
+    req.body.slotEnd
+  );
 
   try {
     console.log("📩 Incoming booking request body:", req.body);
@@ -562,9 +566,9 @@ console.log("📩 slotStart:", req.body.slotStart, "slotEnd:", req.body.slotEnd)
       finalSlotStartISO = buildISOFromDateAndTime(providedDate, rawSlotStart);
       finalSlotEndISO = buildISOFromDateAndTime(providedDate, rawSlotEnd);
       if (!finalSlotStartISO || !finalSlotEndISO) {
-        return res
-          .status(400)
-          .json({ error: "Invalid date or time format (expected YYYY-MM-DD and HH:mm)" });
+        return res.status(400).json({
+          error: "Invalid date or time format (expected YYYY-MM-DD and HH:mm)",
+        });
       }
     }
     // Case B: both look like ISO strings -> use as-is (but validate)
@@ -581,7 +585,11 @@ console.log("📩 slotStart:", req.body.slotStart, "slotEnd:", req.body.slotEnd)
       if (isTimeOnly(rawSlotStart) && isISOish(rawSlotEnd) && providedDate) {
         finalSlotStartISO = buildISOFromDateAndTime(providedDate, rawSlotStart);
         finalSlotEndISO = new Date(rawSlotEnd).toISOString();
-      } else if (isISOish(rawSlotStart) && isTimeOnly(rawSlotEnd) && providedDate) {
+      } else if (
+        isISOish(rawSlotStart) &&
+        isTimeOnly(rawSlotEnd) &&
+        providedDate
+      ) {
         finalSlotStartISO = new Date(rawSlotStart).toISOString();
         finalSlotEndISO = buildISOFromDateAndTime(providedDate, rawSlotEnd);
       } else {
@@ -591,17 +599,28 @@ console.log("📩 slotStart:", req.body.slotStart, "slotEnd:", req.body.slotEnd)
         });
       }
       if (!finalSlotStartISO || !finalSlotEndISO) {
-        return res.status(400).json({ error: "Failed to parse slot datetimes" });
+        return res
+          .status(400)
+          .json({ error: "Failed to parse slot datetimes" });
       }
     }
 
     // Parse into Date objects and validate
     const slotStartDate = new Date(finalSlotStartISO);
     const slotEndDate = new Date(finalSlotEndISO);
-    console.log("🔍 Parsed slotStartDate, slotEndDate:", slotStartDate, slotEndDate);
+    console.log(
+      "🔍 Parsed slotStartDate, slotEndDate:",
+      slotStartDate,
+      slotEndDate
+    );
     if (isNaN(slotStartDate) || isNaN(slotEndDate)) {
-      console.error("❌ Invalid constructed dates", { finalSlotStartISO, finalSlotEndISO });
-      return res.status(400).json({ error: "Invalid slot start/end datetimes" });
+      console.error("❌ Invalid constructed dates", {
+        finalSlotStartISO,
+        finalSlotEndISO,
+      });
+      return res
+        .status(400)
+        .json({ error: "Invalid slot start/end datetimes" });
     }
 
     // ----------------------------
@@ -645,7 +664,9 @@ console.log("📩 slotStart:", req.body.slotStart, "slotEnd:", req.body.slotEnd)
         ? mode.charAt(0).toUpperCase() + mode.slice(1).toLowerCase()
         : null;
     if (!modeValue || !["Online", "Offline"].includes(modeValue)) {
-      return res.status(400).json({ error: "Invalid mode. Must be 'Online' or 'Offline'" });
+      return res
+        .status(400)
+        .json({ error: "Invalid mode. Must be 'Online' or 'Offline'" });
     }
 
     // ----------------------------
@@ -654,15 +675,30 @@ console.log("📩 slotStart:", req.body.slotStart, "slotEnd:", req.body.slotEnd)
     const doctor = await Doctor.findById(doctorId);
     if (!doctor) return res.status(404).json({ error: "Doctor not found" });
     if (doctor.isAvailable !== "available") {
-      return res.status(400).json({ error: "Doctor is not available for booking" });
+      return res
+        .status(400)
+        .json({ error: "Doctor is not available for booking" });
     }
 
     // ----------------------------
     // Check and create doctor dateSlots if needed
     // ----------------------------
     const bookingDate = slotStartDate.toISOString().split("T")[0]; // YYYY-MM-DD
-    const bookingStartTime = slotStartDate.toTimeString().slice(0, 5); // HH:mm
-    const bookingEndTime = slotEndDate.toTimeString().slice(0, 5);
+    const toLocalTimeHHMM = (date) => {
+      const local = new Date(date);
+      const hours = local.getHours().toString().padStart(2, "0");
+      const minutes = local.getMinutes().toString().padStart(2, "0");
+      return `${hours}:${minutes}`;
+    };
+
+    const bookingStartTime = toLocalTimeHHMM(slotStartDate);
+    const bookingEndTime = toLocalTimeHHMM(slotEndDate);
+    console.log("📅 bookingStartTime:", bookingStartTime);
+    console.log("📅 bookingEndTime:", bookingEndTime);
+    console.log(
+      "🎯 slots on doctor:",
+      slots.map((s) => `${s.startTime}-${s.endTime} (${s.isAvailable})`)
+    );
 
     if (
       (doctor.dateSlots instanceof Map && !doctor.dateSlots.has(bookingDate)) ||
@@ -682,19 +718,22 @@ console.log("📩 slotStart:", req.body.slotStart, "slotEnd:", req.body.slotEnd)
       await doctor.save();
     }
 
-    const slots = doctor.dateSlots instanceof Map
-      ? doctor.dateSlots.get(bookingDate)
-      : (doctor.dateSlots?.[bookingDate] || []);
+    const slots =
+      doctor.dateSlots instanceof Map
+        ? doctor.dateSlots.get(bookingDate)
+        : doctor.dateSlots?.[bookingDate] || [];
 
     const slotIndex = slots.findIndex(
-      slot =>
+      (slot) =>
         slot.startTime === bookingStartTime &&
         slot.endTime === bookingEndTime &&
         slot.isAvailable !== false
     );
 
     if (slotIndex === -1) {
-      return res.status(400).json({ error: "Selected slot is already booked or not available" });
+      return res
+        .status(400)
+        .json({ error: "Selected slot is already booked or not available" });
     }
 
     // Mark slot booked on doctor record
@@ -716,7 +755,7 @@ console.log("📩 slotStart:", req.body.slotStart, "slotEnd:", req.body.slotEnd)
       patientName: student.name,
       mobile: student.mobile || "N/A",
       slotStart: slotStartDate, // Date object
-      slotEnd: slotEndDate,     // Date object
+      slotEnd: slotEndDate, // Date object
       notes,
       mode: modeValue,
       status: "booked",
@@ -739,7 +778,6 @@ console.log("📩 slotStart:", req.body.slotStart, "slotEnd:", req.body.slotEnd)
   }
 });
 
-
 // --------------------
 // Update session status
 // --------------------
@@ -759,7 +797,9 @@ router.put("/:id/status", authMiddleware, async (req, res) => {
       (session.doctorId && session.doctorId.toString() === userId);
 
     if (!isDoctorOrAdmin) {
-      return res.status(403).json({ error: "Not authorized to change this session" });
+      return res
+        .status(403)
+        .json({ error: "Not authorized to change this session" });
     }
 
     const { status } = req.body;
@@ -888,264 +928,3 @@ router.get("/my-sessions", authMiddleware, async (req, res) => {
 });
 
 export default router;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-router.post("/", authMiddleware, async (req, res) => {
-  console.log("📩 Incoming body:", req.body);
-console.log("📩 slotStart:", req.body.slotStart, "slotEnd:", req.body.slotEnd);
-
-  try {
-    console.log("📩 Incoming booking request body:", req.body);
-
-    // only students allowed
-    if (req.userRole !== "student") {
-      return res.status(403).json({ error: "Access denied: students only" });
-    }
-
-    const {
-      doctorId,
-      slotStart: rawSlotStart,
-      slotEnd: rawSlotEnd,
-      date: providedDate, // optional (used when frontend sends HH:mm times)
-      notes,
-      mode,
-    } = req.body;
-
-    // Basic required fields
-    if (!doctorId || !rawSlotStart || !rawSlotEnd || !mode) {
-      return res.status(400).json({
-        error: "Doctor ID, slotStart, slotEnd, and mode are required",
-      });
-    }
-
-    // helpers
-    const isTimeOnly = (s) =>
-      typeof s === "string" && /^([01]?\d|2[0-3]):([0-5]\d)$/.test(s);
-    const isISOish = (s) =>
-      typeof s === "string" && (s.includes("T") || s.endsWith("Z"));
-
-    const buildISOFromDateAndTime = (dateStr, timeStr) => {
-      if (!dateStr || !timeStr) return null;
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
-      if (!/^([01]?\d|2[0-3]):([0-5]\d)$/.test(timeStr)) return null;
-      const iso = new Date(`${dateStr}T${timeStr}:00`);
-      if (isNaN(iso)) return null;
-      return iso.toISOString();
-    };
-
-    // Try to derive final slotStart/slotEnd ISO strings in a robust way
-    let finalSlotStartISO = null;
-    let finalSlotEndISO = null;
-
-    // Case A: both are "HH:mm" => require 'date' param
-    if (isTimeOnly(rawSlotStart) && isTimeOnly(rawSlotEnd)) {
-      if (!providedDate || !/^\d{4}-\d{2}-\d{2}$/.test(providedDate)) {
-        return res.status(400).json({
-          error:
-            "When sending time-only slots (HH:mm), include date as YYYY-MM-DD in body field 'date'",
-        });
-      }
-      finalSlotStartISO = buildISOFromDateAndTime(providedDate, rawSlotStart);
-      finalSlotEndISO = buildISOFromDateAndTime(providedDate, rawSlotEnd);
-      if (!finalSlotStartISO || !finalSlotEndISO) {
-        return res
-          .status(400)
-          .json({ error: "Invalid date or time format (expected YYYY-MM-DD and HH:mm)" });
-      }
-    }
-    // Case B: both look like ISO strings -> use as-is (but validate)
-    else if (isISOish(rawSlotStart) && isISOish(rawSlotEnd)) {
-      const sStart = new Date(rawSlotStart);
-      const sEnd = new Date(rawSlotEnd);
-      if (isNaN(sStart) || isNaN(sEnd)) {
-        return res.status(400).json({ error: "Invalid ISO datetime provided" });
-      }
-      finalSlotStartISO = sStart.toISOString();
-      finalSlotEndISO = sEnd.toISOString();
-    } else {
-      // Mixed or unsupported format — attempt to be helpful with mixed cases
-      if (isTimeOnly(rawSlotStart) && isISOish(rawSlotEnd) && providedDate) {
-        finalSlotStartISO = buildISOFromDateAndTime(providedDate, rawSlotStart);
-        finalSlotEndISO = new Date(rawSlotEnd).toISOString();
-      } else if (isISOish(rawSlotStart) && isTimeOnly(rawSlotEnd) && providedDate) {
-        finalSlotStartISO = new Date(rawSlotStart).toISOString();
-        finalSlotEndISO = buildISOFromDateAndTime(providedDate, rawSlotEnd);
-      } else {
-        return res.status(400).json({
-          error:
-            "slotStart and slotEnd must be either both HH:mm (with 'date') or both full ISO datetimes",
-        });
-      }
-      if (!finalSlotStartISO || !finalSlotEndISO) {
-        return res.status(400).json({ error: "Failed to parse slot datetimes" });
-      }
-    }
-
-    // Parse into Date objects and validate
-    const slotStartDate = new Date(finalSlotStartISO);
-    const slotEndDate = new Date(finalSlotEndISO);
-    console.log("🔍 Parsed slotStartDate, slotEndDate:", slotStartDate, slotEndDate);
-    if (isNaN(slotStartDate) || isNaN(slotEndDate)) {
-      console.error("❌ Invalid constructed dates", { finalSlotStartISO, finalSlotEndISO });
-      return res.status(400).json({ error: "Invalid slot start/end datetimes" });
-    }
-
-    // ----------------------------
-    // Fetch student
-    // ----------------------------
-    const student = await User.findById(req.userId);
-    if (!student) return res.status(404).json({ error: "Student not found" });
-
-    // ----------------------------
-    // (Optional) daily session limit check
-    // If you DO NOT want the '2 sessions per day' check, remove this block
-    // ----------------------------
-    const startOfDay = new Date(slotStartDate);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(slotStartDate);
-    endOfDay.setHours(23, 59, 59, 999);
-
-    console.log("📌 Checking daily session limit for student:", req.userId);
-    console.log("📅 Day range:", startOfDay, " -> ", endOfDay);
-
-    const todaySessions = await Session.find({
-      student: req.userId,
-      slotStart: { $gte: startOfDay, $lte: endOfDay },
-      status: { $nin: ["cancelled", "rejected"] },
-    });
-
-    console.log("📌 Existing active sessions today:", todaySessions.length);
-
-    // If you want to keep the limit, uncomment this:
-    // if (todaySessions.length >= 2) {
-    //   return res.status(400).json({
-    //     error: "❌ You can book only 2 active sessions per day. Please try again tomorrow.",
-    //   });
-    // }
-
-    // ----------------------------
-    // Normalize mode
-    // ----------------------------
-    const modeValue =
-      typeof mode === "string" && mode.length
-        ? mode.charAt(0).toUpperCase() + mode.slice(1).toLowerCase()
-        : null;
-    if (!modeValue || !["Online", "Offline"].includes(modeValue)) {
-      return res.status(400).json({ error: "Invalid mode. Must be 'Online' or 'Offline'" });
-    }
-
-    // ----------------------------
-    // Fetch doctor and check availability
-    // ----------------------------
-    const doctor = await Doctor.findById(doctorId);
-    if (!doctor) return res.status(404).json({ error: "Doctor not found" });
-    if (doctor.isAvailable !== "available") {
-      return res.status(400).json({ error: "Doctor is not available for booking" });
-    }
-
-    // ----------------------------
-    // Check and create doctor dateSlots if needed
-    // ----------------------------
-    const bookingDate = slotStartDate.toISOString().split("T")[0]; // YYYY-MM-DD
-    const bookingStartTime = slotStartDate.toTimeString().slice(0, 5); // HH:mm
-    const bookingEndTime = slotEndDate.toTimeString().slice(0, 5);
-
-    if (
-      (doctor.dateSlots instanceof Map && !doctor.dateSlots.has(bookingDate)) ||
-      (!(doctor.dateSlots instanceof Map) && !doctor.dateSlots?.[bookingDate])
-    ) {
-      const fallbackSlots = doctor.getAvailabilityForDate
-        ? doctor.getAvailabilityForDate(bookingDate)
-        : [];
-      const normalizedFallback = (fallbackSlots || []).map((s) => ({ ...s }));
-      if (doctor.dateSlots instanceof Map) {
-        doctor.dateSlots.set(bookingDate, normalizedFallback);
-      } else {
-        doctor.dateSlots = doctor.dateSlots || {};
-        doctor.dateSlots[bookingDate] = normalizedFallback;
-      }
-      doctor.markModified && doctor.markModified("dateSlots");
-      await doctor.save();
-    }
-
-    const slots = doctor.dateSlots instanceof Map
-      ? doctor.dateSlots.get(bookingDate)
-      : (doctor.dateSlots?.[bookingDate] || []);
-
-    const slotIndex = slots.findIndex(
-      slot =>
-        slot.startTime === bookingStartTime &&
-        slot.endTime === bookingEndTime &&
-        slot.isAvailable !== false
-    );
-
-    if (slotIndex === -1) {
-      return res.status(400).json({ error: "Selected slot is already booked or not available" });
-    }
-
-    // Mark slot booked on doctor record
-    slots[slotIndex].isAvailable = false;
-    if (doctor.dateSlots instanceof Map) {
-      doctor.dateSlots.set(bookingDate, slots);
-    } else {
-      doctor.dateSlots[bookingDate] = slots;
-    }
-    doctor.markModified && doctor.markModified("dateSlots");
-    await doctor.save();
-
-    // ----------------------------
-    // Create session (pass Date objects, not the string "Invalid Date")
-    // ----------------------------
-    const session = new Session({
-      student: req.userId,
-      doctorId,
-      patientName: student.name,
-      mobile: student.mobile || "N/A",
-      slotStart: slotStartDate, // Date object
-      slotEnd: slotEndDate,     // Date object
-      notes,
-      mode: modeValue,
-      status: "booked",
-    });
-
-    await session.save();
-    console.log("✅ Session saved:", session._id);
-
-    // Optionally notify
-    await sendNotifications(session);
-
-    res.status(201).json({
-      message: "✅ Session booked successfully",
-      session,
-    });
-  } catch (error) {
-    console.log("📩 Incoming booking request body:", req.body);
-    console.error("❌ Error booking session:", error);
-    res.status(500).json({ error: "Failed to book session" });
-  }
-});
