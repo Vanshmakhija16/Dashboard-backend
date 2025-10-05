@@ -129,10 +129,9 @@ Thank you for booking with us.`;
   }
 };
 
-// --------------------
+
 // Book a new session
-// --------------------
-// Replace your existing booking route with the code below
+
 router.post("/", authMiddleware, async (req, res) => {
   console.log("📩 Incoming body:", req.body);
    console.log(
