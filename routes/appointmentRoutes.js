@@ -230,7 +230,7 @@ router.get("/my/upcoming", authMiddleware, async (req, res) => {
     const now = new Date();
     const count = await Appointment.countDocuments({
       student: req.userId,
-      status: "approved",
+      status: "booked",
       slotStart: { $gte: now },
     });
     res.json({ count });

@@ -504,7 +504,31 @@ router.get("/", (req, res) => {
     }))
   );
 });
+// Get assigned assessments of a student
+router.get("/my", async (req, res) => {
+  try {
+    const student = await User.findById(req.userId); // <-- use logged-in user
+    if (!student || student.role !== "student") {
+      return res.status(404).json({ error: "Student not found or not a student" });
+    }
 
+    const detailed = (student.assessments || []).map((a) => {
+      const meta = assessments.find((m) => m.id === a.assessmentId);
+      return {
+        assessmentId: a.assessmentId,
+        status: a.status,
+        assignedAt: a.assignedAt,
+        title: meta?.title,
+        slug: meta?.slug,
+        description: meta?.description
+      };
+    });
+
+    res.json(detailed);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 router.get("/:slug", (req, res) => {
   const assessment = assessments.find((a) => a.slug === req.params.slug);
   if (!assessment) return res.status(404).json({ error: "Assessment not found" });
@@ -607,31 +631,7 @@ router.put("/unlock/:studentId/:assessmentId", async (req, res) => {
 });
 
 
-// Get assigned assessments of a student
-router.get("/my", async (req, res) => {
-  try {
-    const student = await User.findById(req.userId); // <-- use logged-in user
-    if (!student || student.role !== "student") {
-      return res.status(404).json({ error: "Student not found or not a student" });
-    }
 
-    const detailed = (student.assessments || []).map((a) => {
-      const meta = assessments.find((m) => m.id === a.assessmentId);
-      return {
-        assessmentId: a.assessmentId,
-        status: a.status,
-        assignedAt: a.assignedAt,
-        title: meta?.title,
-        slug: meta?.slug,
-        description: meta?.description
-      };
-    });
-
-    res.json(detailed);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 
 
