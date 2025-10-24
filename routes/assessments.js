@@ -867,46 +867,46 @@ router.get("/my", authMiddleware, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-// router.get("/:slug", (req, res) => {
-//   const assessment = assessments.find((a) => a.slug === req.params.slug);
-//   if (!assessment) return res.status(404).json({ error: "Assessment not found" });
-//   res.json(assessment);
-// });
-
-router.get("/:slug", async (req, res) => {
-  try {
-    const assessment = assessments.find((a) => a.slug === req.params.slug);
-    if (!assessment)
-      return res.status(404).json({ error: "Assessment not found" });
-
-    // Find the logged-in student
-    const student = await User.findById(req.userId);
-    if (!student || student.role !== "student") {
-      return res.status(403).json({ error: "Access denied" });
-    }
-
-    // Check if this assessment is assigned to the student
-    const assigned = student.assessments?.find(
-      (a) => a.assessmentId === assessment.id
-    );
-
-    if (!assigned) {
-      return res.status(403).json({ error: "Assessment not assigned to you" });
-    }
-
-    // Check if it is locked
-    if (assigned.status === "locked") {
-      return res.status(403).json({ error: "Assessment is locked. Contact your doctor." });
-    }
-
-    // ✅ Assessment is unlocked, send it
-    res.json(assessment);
-
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
+router.get("/:slug", (req, res) => {
+  const assessment = assessments.find((a) => a.slug === req.params.slug);
+  if (!assessment) return res.status(404).json({ error: "Assessment not found" });
+  res.json(assessment);
 });
+
+// router.get("/:slug", async (req, res) => {
+//   try {
+//     const assessment = assessments.find((a) => a.slug === req.params.slug);
+//     if (!assessment)
+//       return res.status(404).json({ error: "Assessment not found" });
+
+//     // Find the logged-in student
+//     const student = await User.findById(req.userId);
+//     if (!student || student.role !== "student") {
+//       return res.status(403).json({ error: "Access denied" });
+//     }
+
+//     // Check if this assessment is assigned to the student
+//     const assigned = student.assessments?.find(
+//       (a) => a.assessmentId === assessment.id
+//     );
+
+//     if (!assigned) {
+//       return res.status(403).json({ error: "Assessment not assigned to you" });
+//     }
+
+//     // Check if it is locked
+//     if (assigned.status === "locked") {
+//       return res.status(403).json({ error: "Assessment is locked. Contact your doctor." });
+//     }
+
+//     // ✅ Assessment is unlocked, send it
+//     res.json(assessment);
+
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ error: "Internal server error" });
+//   }
+// });
 
 // ------------------------------
 // UNIVERSAL ASSESSMENT SUBMIT
