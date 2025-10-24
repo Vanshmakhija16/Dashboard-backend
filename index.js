@@ -13,6 +13,8 @@ import adminRoutes from "./routes/adminRoutes.js";
 import assessmentsRoute from "./routes/assessments.js";
 import universityRoutes from "./routes/universityRoutes.js";
 import reportRoutes from "./routes/reportRoutes.js";
+import CompanyRoute from "./routes/CompanyRoute.js";
+
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -29,8 +31,8 @@ app.use(cors({
   credentials: true
 }));
 //  app.use(cors())
-// app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+// app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 
 // --------------------
@@ -75,6 +77,8 @@ app.use("/api/admin", authMiddleware, adminRoutes);
 app.use("/api/assessments", assessmentsRoute);
 app.use("/api/universities", universityRoutes); 
 app.use("/api/reports", reportRoutes);
+app.use("/api/companies", CompanyRoute);
+
 
 // Get logged-in user info
 app.get("/api/me", authMiddleware, async (req, res) => {

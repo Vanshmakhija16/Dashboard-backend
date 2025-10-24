@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import University from "../models/University.js";
 import Doctor from "../models/Doctor.js";
+import mongoose from "mongoose";
 
 
 const authMiddleware = async (req, res, next) => {
@@ -19,21 +20,31 @@ const authMiddleware = async (req, res, next) => {
   try {
     // 2️⃣ Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    console.log("Decoded token:", decoded);
 
-    // 3️⃣ Attach user to request (without password)
-    req.user = await User.findById(decoded.id).select("-password");
-    
+    // 3️⃣ Convert decoded.id to ObjectId safely
+    let userId;
+    if (mongoose.Types.ObjectId.isValid(decoded.id)) {
+      userId = new mongoose.Types.ObjectId(decoded.id); // ✅ must use 'new'
+    } else {
+      console.log("Invalid user ID in token:", decoded.id);
+      return res.status(401).json({ message: "Invalid token: bad user ID" });
+    }
+
+    // 4️⃣ Attach user to request (without password)
+    req.user = await User.findById(userId).select("-password");
+    console.log("User from DB:", req.user);
+
     if (!req.user) {
       return res.status(401).json({ message: "User not found" });
     }
 
-    next(); // ✅ go to next middleware/route
+    next(); // ✅ continue
   } catch (err) {
     console.error("Auth Middleware Error:", err.message);
     res.status(401).json({ message: "Invalid token" });
   }
 };
-
 
 const router = express.Router();
 
@@ -315,5 +326,26 @@ router.get("/me", authMiddleware, async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 });
+
+// routes/userRoutes.js
+router.get("/students", authMiddleware, async (req, res) => {
+  console.log("Students")
+  try {
+    console.log("hello");
+    
+    if (req.user.role !== "doctor") {
+      return res.status(403).json({ error: "Access denied: doctors only" });
+    }
+        console.log("hii");
+
+    const students = await User.find({ role: "student" }).select("name email assessments");
+    res.json(students);
+  } catch (err) {
+            console.log("error");
+
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 export default router;

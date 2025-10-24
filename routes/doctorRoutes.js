@@ -857,4 +857,67 @@ router.get("/:id/available-dates", validateObjectId, async (req, res) => {
   }
 });
 
+// routes/doctors.js
+router.get("/:id/available-dates/employee", async (req, res) => {
+  try {
+    const days = parseInt(req.query.days, 10) || 14;
+    const doctor = await Doctor.findById(req.params.id).select("-password");
+    if (!doctor) return res.status(404).json({ success: false, message: "Doctor not found" });
+
+    // 🩺 Get all booked sessions (excluding cancelled)
+    const bookedSessions = await Session.find({
+      doctorId: doctor._id,
+      status: { $ne: "cancelled" },
+    }).lean();
+
+    // Create a Set of all booked slot start times (ISO)
+    const bookedMap = new Set(
+      bookedSessions.map((s) => new Date(s.slotStart).toISOString())
+    );
+
+    // 🗓️ Get doctor’s defined slots (assuming doctor.slots or doctor.getAvailableDates())
+    const grouped =
+      doctor.getAvailableDates?.(days) ??
+      doctor.dateSlots ??
+      doctor.slots ??
+      {};
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const sortedDates = Object.keys(grouped).sort(
+      (a, b) => new Date(a) - new Date(b)
+    );
+
+    // 🧮 Filter out booked slots and past dates
+    const availableDates = sortedDates
+      .filter((date) => {
+        const d = new Date(date);
+        d.setHours(0, 0, 0, 0);
+        return d >= today;
+      })
+      .map((date) => {
+        const slots = grouped[date] || [];
+        const freeSlots = slots.filter((slot) => {
+          const startTime =
+            slot.startTime || slot.start || slot.slotStart || slot.time;
+          if (!startTime) return false;
+
+          const slotDateTime = new Date(`${date}T${startTime}:00`);
+          if (isNaN(slotDateTime)) return false;
+
+          return !bookedMap.has(slotDateTime.toISOString());
+        });
+
+        return { date, slots: freeSlots };
+      })
+      .filter((entry) => entry.slots.length > 0);
+
+    res.json({ success: true, data: availableDates });
+  } catch (err) {
+    console.error("Error fetching available dates:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 export default router;

@@ -2,19 +2,16 @@ import mongoose from "mongoose";
 
 const reportSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true },
-    age: { type: Number },
-    gender: { type: String, enum: ["male", "female", "other"], default: "male" },
-    mode: { type: String, enum: ["online", "offline"], default: "offline" },
-    problems: String,
-    analysis: String,
-    metrics: String,
-    nextSessionDate: Date,
-    daysToAttend: Number,
-    attendedDate: Date,
-    assessmentSlug: { type: String }, // links to Assessment.slug
+    assessmentSlug: { type: String, required: true }, // to identify which assessment
+    assessmentTitle: { type: String },                // e.g. "Stress Assessment"
+    name: { type: String, default: "Guest User" },    // optional - user name
+    score: { type: Number, required: true },          // total score
+    maxScore: { type: Number, required: true },       // maximum possible score
+    percentage: { type: Number, required: true },     // derived percentage
+    status: { type: String },                         // e.g. "High Stress", "Low Anxiety"
+    message: { type: String },                        // custom feedback text
   },
-  { timestamps: true }
+  { timestamps: true } // will automatically add createdAt, updatedAt
 );
 
 export default mongoose.model("Report", reportSchema);

@@ -31,6 +31,7 @@ const userSchema = new mongoose.Schema(
       }, // Required for students
     },
 
+    
     // Add verification and approval fields
     isVerified: {
       type: Boolean,
@@ -54,7 +55,7 @@ const userSchema = new mongoose.Schema(
         status: {
           type: String,
           enum: ["locked", "unlocked"],
-          default: "unlocked",
+          default: "locked",
         },
         assignedAt: { type: Date, default: Date.now },
       },
