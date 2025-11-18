@@ -49,37 +49,11 @@ app.use(express.json());
 //   })
 // );
 
-// app.use(cors({
-//   origin: process.env.CLIENT_URL || "*",
-//   credentials: true
-// }));
-//  app.use(cors())
-
-const allowedOrigins = [
-  "http://localhost:3000",
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "https://dashboard.minderytech.com",
-  "https://minderytech.com"
-];
-
 app.use(cors({
-  origin: function(origin, callback) {
-    // Allow requests like Postman which have no origin
-    if (!origin) return callback(null, true);
-
-    // Allow if origin matches exactly
-    if (allowedOrigins.some(o => o.toLowerCase() === origin.toLowerCase())) {
-      return callback(null, true);
-    }
-
-    // Blocked origin
-    console.log("❌ CORS blocked for origin:", origin);
-    return callback(new Error("CORS not allowed for this origin"), false);
-  },
+  origin: process.env.CLIENT_URL,
   credentials: true
 }));
-
+//  app.use(cors())
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 // app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
