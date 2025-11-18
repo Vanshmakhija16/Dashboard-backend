@@ -49,9 +49,14 @@ app.use(express.json());
 //   })
 // );
 
+// app.use(cors({
+//   origin: process.env.CLIENT_URL,
+//   credentials: true
+// }));
+
 app.use(cors({
-  origin: process.env.CLIENT_URL,
-  credentials: true
+  origin: "https://dashboard.minderytech.com",
+  credentials: true,
 }));
 //  app.use(cors())
 
