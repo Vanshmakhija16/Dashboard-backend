@@ -26,6 +26,35 @@ dotenv.config();
 
 const app = express();
 app.use(express.json());
+// const allowedOrigins = [
+//   "http://localhost:3000",
+//   "http://localhost:5173",
+//   "http://localhost:5174",
+//   "https://dashboard.minderytech.com",
+//   "https://minderytech.com"
+// ];
+
+// app.use(
+//   cors({
+//     origin: function (origin, callback) {
+//       if (!origin) return callback(null, true); // Allow non-browser tools like Postman
+//       if (allowedOrigins.includes(origin)) {
+//         callback(null, true);
+//       } else {
+//         console.log("❌ Blocked by CORS:", origin);
+//         callback(new Error("CORS not allowed for this origin"), false);
+//       }
+//     },
+//     credentials: true,
+//   })
+// );
+
+// app.use(cors({
+//   origin: process.env.CLIENT_URL || "*",
+//   credentials: true
+// }));
+//  app.use(cors())
+
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
@@ -34,26 +63,23 @@ const allowedOrigins = [
   "https://minderytech.com"
 ];
 
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      if (!origin) return callback(null, true); // Allow non-browser tools like Postman
-      if (allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        console.log("❌ Blocked by CORS:", origin);
-        callback(new Error("CORS not allowed for this origin"), false);
-      }
-    },
-    credentials: true,
-  })
-);
+app.use(cors({
+  origin: function(origin, callback) {
+    // Allow requests like Postman which have no origin
+    if (!origin) return callback(null, true);
 
-// app.use(cors({
-//   origin: process.env.CLIENT_URL || "*",
-//   credentials: true
-// }));
-//  app.use(cors())
+    // Allow if origin matches exactly
+    if (allowedOrigins.some(o => o.toLowerCase() === origin.toLowerCase())) {
+      return callback(null, true);
+    }
+
+    // Blocked origin
+    console.log("❌ CORS blocked for origin:", origin);
+    return callback(new Error("CORS not allowed for this origin"), false);
+  },
+  credentials: true
+}));
+
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 // app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
