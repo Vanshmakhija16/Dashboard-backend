@@ -26,6 +26,29 @@ dotenv.config();
 
 const app = express();
 app.use(express.json());
+// const allowedOrigins = [
+//   "http://localhost:3000",
+//   "http://localhost:5173",
+//   "http://localhost:5174",
+//   "https://dashboard.minderytech.com",
+//   "https://minderytech.com"
+// ];
+
+// app.use(
+//   cors({
+//     origin: function (origin, callback) {
+//       if (!origin) return callback(null, true); // Allow non-browser tools like Postman
+//       if (allowedOrigins.includes(origin)) {
+//         callback(null, true);
+//       } else {
+//         console.log("❌ Blocked by CORS:", origin);
+//         callback(new Error("CORS not allowed for this origin"), false);
+//       }
+//     },
+//     credentials: true,
+//   })
+// );
+
 app.use(cors({
   origin: process.env.CLIENT_URL || "*",
   credentials: true
@@ -78,6 +101,10 @@ app.use("/api/assessments", assessmentsRoute);
 app.use("/api/universities", universityRoutes); 
 app.use("/api/reports", reportRoutes);
 app.use("/api/companies", CompanyRoute);
+
+app.get("/", (req, res) => {
+  res.send("Backend is working ✅");
+});
 
 
 // Get logged-in user info

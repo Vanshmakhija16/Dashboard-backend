@@ -159,6 +159,7 @@ router.post("/signup", async (req, res) => {
  *          Supports both Users (students/admins) and Doctors
  */
 router.post("/login", async (req, res) => {
+  console.log("Hit")
   let { email, password } = req.body;
 
   if (!email || !password) {
@@ -168,51 +169,43 @@ router.post("/login", async (req, res) => {
   email = email.trim().toLowerCase();
   password = String(password).trim();
 
-  try {
-    // Try to find in Users first
-    let user = await User.findOne({ email }).populate("university", "name");
-    let userType = "student";
+try {
+  console.log("Finding user...");
+  let user = await User.findOne({ email }).populate("university", "name");
+  console.log("User found:", user);
 
-    // If not found in Users, check Doctors
-    if (!user) {
-      user = await Doctor.findOne({ email });
-      userType = "doctor";
-      console.log("User", user)
-    }
+  let userType = "student";
 
-    if (!user) return res.status(400).json({ message: "Invalid email or password" });
-    const trimmedpass = String(password).trim();
-    console.log("Raw password:",trimmedpass );
-     console.log("Stored hash:", user.password);
-     console.log("Password type:", typeof password, `"${password}"`);
-console.log("DB hash type:", typeof user.password, `"${user.password}"`);
-
-     const isMatch = await bcrypt.compare(trimmedpass, user.password);
-         console.log("Password match:", isMatch);
-
-    if (!isMatch) return res.status(400).json({ message: "Invalid email or password" });
-
-
-
-    const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: "1d" });
-
-    res.status(200).json({
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone || "",
-        role: user.role,
-        consentAccepted: user.consentAccepted,
-        university: userType === "student" ? user.university || null : null,
-      },
-    });
-  } catch (error) {
-    console.error("Login error:", error);
-    res.status(500).json({ message: "Internal server error" });
+  if (!user) {
+    console.log("Checking doctor...");
+    user = await Doctor.findOne({ email });
+    userType = "doctor";
+    console.log("Doctor found:", user);
   }
-});
+
+  if (!user) {
+    console.log("❌ User not found");
+    return res.status(400).json({ message: "Invalid email or password" });
+  }
+
+  console.log("Comparing passwords...");
+  const isMatch = await bcrypt.compare(password.trim(), user.password);
+  console.log("Password match result:", isMatch);
+
+  if (!isMatch) return res.status(400).json({ message: "Invalid email or password" });
+
+  console.log("Generating token...");
+  const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, {
+    expiresIn: "1d",
+  });
+
+  console.log("✅ Login successful");
+  res.status(200).json({ token, user });
+} catch (error) {
+  console.error("🔥 Login error details:", error);
+  res.status(500).json({ message: error.message || "Internal server error" });
+}
+})
 
 // --------------------- CREATE UNIVERSITY ADMIN ---------------------
 /**

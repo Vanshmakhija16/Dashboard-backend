@@ -561,4 +561,39 @@ router.get("/my-sessions", authMiddleware, async (req, res) => {
   }
 });
 
+
+router.get("/doctor/:doctorId/students", async (req, res) => {
+  try {
+    const { doctorId } = req.params;
+
+    // Find all sessions for that doctor
+    const sessions = await Session.find({ doctorId })
+      .populate("student", "name email phone") // populate student details
+      .exec();
+    
+
+
+    if (!sessions.length) {
+                console.log("Hit Dr ID is " , doctorId , "session", sessions )
+      return res.status(404).json({ message: "No students found for this doctor" });
+    }
+
+    // Extract unique students (avoid duplicates)
+    const uniqueStudents = [];
+    const seen = new Set();
+
+    sessions.forEach((session) => {
+      if (session.student && !seen.has(session.student._id.toString())) {
+        seen.add(session.student._id.toString());
+        uniqueStudents.push(session.student);
+      }
+    });
+
+    return res.status(200).json(uniqueStudents);
+  } catch (error) {
+    console.error("Error fetching students for doctor:", error);
+    res.status(500).json({ message: "Server error while fetching students" });
+  }
+});
+
 export default router;

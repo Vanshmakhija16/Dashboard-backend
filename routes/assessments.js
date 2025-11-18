@@ -1207,6 +1207,150 @@ router.put("/unlock-by-assessment/:assessmentId", authMiddleware, async (req, re
 });
 
 
+router.get("/student/:studentId", async (req, res) => {
+  try {
+    const { studentId } = req.params;
+
+    const student = await User.findById(studentId).select("name assessments");
+    if (!student) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+
+    // Return only their assessment info
+    res.json({
+      studentName: student.name,
+      assessments: student.assessments, // [{assessmentId, title, status, assignedAt}]
+    });
+  } catch (error) {
+    console.error("Error fetching student assessments:", error);
+    res.status(500).json({ message: "Server error fetching assessments" });
+  }
+});
+
+
+
+/* ---------------------------------------------
+Get all assessments for a student
+---------------------------------------------- */
+router.get("/students/:studentId/assessments", async (req, res) => {
+  try {
+    const { studentId } = req.params;
+    const student = await User.findById(studentId).select("name assessments");
+    if (!student) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+
+    // Return student's assessments (if none, return empty array)
+    res.json({
+      studentName: student.name,
+      assessments: student.assessments || [],
+    });
+  } catch (error) {
+    console.error("Error fetching assessments for student:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+/* -------------------------------------------------------------
+   ✅ ROUTE 2: Lock/unlock one specific assessment for a student
+-------------------------------------------------------------- */
+// router.patch("/students/:studentId/assessments/:assessmentId", async (req, res) => {
+//   try {
+//     const { studentId, assessmentId } = req.params;
+//     const { status, title } = req.body; // status = "locked" | "unlocked"
+
+//     const student = await User.findById(studentId);
+//     if (!student) {
+//       return res.status(404).json({ message: "Student not found" });
+//     }
+
+//     // Check if this assessment already exists in student's record
+//     const existing = student.assessments.find(
+//       (a) => a.assessmentId === Number(assessmentId)
+//     );
+
+//     if (existing) {
+//       existing.status = status;
+//       if (title) existing.title = title;
+//     } else {
+//       // If not found, add new assessment record
+//       student.assessments.push({
+//         assessmentId: Number(assessmentId),
+//         title: title || `Assessment ${assessmentId}`,
+//         status: status || "locked",
+//       });
+//     }
+
+//     await student.save();
+
+//     res.json({
+//       message: `Assessment ${assessmentId} updated successfully`,
+//       assessments: student.assessments,
+//     });
+//   } catch (error) {
+//     console.error("Error updating assessment:", error);
+//     res.status(500).json({ message: "Server error" });
+//   }
+// });
+
+
+// PATCH /students/:studentId/assessments/:assessmentId
+router.patch("/students/:studentId/assessments/:assessmentId", async (req, res) => {
+  try {
+    const { studentId, assessmentId } = req.params;
+    const { status, title } = req.body; // status = "locked" | "unlocked"
+
+    const student = await User.findById(studentId);
+    if (!student) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+
+    // Find existing assessment in student's array
+    const existingIndex = student.assessments.findIndex(
+      (a) => a.assessmentId === Number(assessmentId)
+    );
+
+    if (status === "unlocked") {
+      // Add or update assessment
+      if (existingIndex !== -1) {
+        student.assessments[existingIndex].status = "unlocked";
+        if (title) student.assessments[existingIndex].title = title;
+      } else {
+        student.assessments.push({
+          assessmentId: Number(assessmentId),
+          title: title || `Assessment ${assessmentId}`,
+          status: "unlocked",
+        });
+      }
+    } else if (status === "locked") {
+      // Remove assessment from student's array
+      if (existingIndex !== -1) {
+        student.assessments.splice(existingIndex, 1);
+      }
+    }
+
+    await student.save();
+
+    res.json({
+      message: `Assessment ${assessmentId} is now ${status}`,
+      assessments: student.assessments,
+    });
+  } catch (error) {
+    console.error("Error updating assessment:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.get("/students/:id", async (req, res) => {
+  try {
+    const student = await User.findById(req.params.id).lean();
+    if (!student) return res.status(404).json({ message: "Student not found" });
+    res.json(student);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
 
 
 

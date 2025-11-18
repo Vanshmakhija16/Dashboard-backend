@@ -256,19 +256,48 @@ doctorSchema.methods.comparePassword = async function (enteredPassword) {
 };
 
 // ✅ Transform for JSON output
+// doctorSchema.set('toJSON', {
+//   transform: function(doc, ret) {
+//     if (ret.dateSlots) {
+      
+//       const dateSlotObj = {};
+//       for (const [key, value] of ret.dateSlots.entries()) {
+//         dateSlotObj[key] = value;
+//       }
+//       ret.slots = dateSlotObj;
+//       ret.dateSlots = dateSlotObj;
+//     }
+//     return ret;
+//   }
+// });
+
+
 doctorSchema.set('toJSON', {
-  transform: function(doc, ret) {
+  transform: function (doc, ret) {
     if (ret.dateSlots) {
+      console.log('Type of dateSlots:', ret.dateSlots.constructor.name);
+
       const dateSlotObj = {};
-      for (const [key, value] of ret.dateSlots.entries()) {
-        dateSlotObj[key] = value;
+
+      // Works for both Map and plain Object
+      if (ret.dateSlots instanceof Map) {
+        for (const [key, value] of ret.dateSlots) {
+          dateSlotObj[key] = value;
+        }
+      } else if (typeof ret.dateSlots === 'object' && ret.dateSlots !== null) {
+        for (const [key, value] of Object.entries(ret.dateSlots)) {
+          dateSlotObj[key] = value;
+        }
       }
+
       ret.slots = dateSlotObj;
       ret.dateSlots = dateSlotObj;
     }
     return ret;
-  }
+  },
 });
+
+
 
 // ✅ Indexes
 doctorSchema.index({ email: 1 });

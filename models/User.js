@@ -48,18 +48,16 @@ const userSchema = new mongoose.Schema(
 
     consentAccepted: { type: Boolean, default: false },
 
-    // 🔑 Assessments assigned to this student
+
     assessments: [
-      {
-        assessmentId: { type: Number, required: true }, // matches your static assessments[].id
-        status: {
-          type: String,
-          enum: ["locked", "unlocked"],
-          default: "unlocked",
-        },
-        assignedAt: { type: Date, default: Date.now },
-      },
-    ],
+  {
+    assessmentId: { type: Number, required: true }, // matches static list id
+    title: { type: String },
+    status: { type: String, enum: ["locked", "unlocked"], default: "locked" },
+    assignedAt: { type: Date, default: Date.now },
+  },
+],
+
   },
   { timestamps: true }
 );

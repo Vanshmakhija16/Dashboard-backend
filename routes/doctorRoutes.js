@@ -7,6 +7,7 @@ import User from "../models/User.js";
 import upload from "../middlewares/upload.js"; 
 import jwt from "jsonwebtoken";
 import Session from "../models/Session.js";
+import Appointment from "../models/Appointment.js"; // or Session.js, depending on your filename
 
 
 const router = express.Router();
