@@ -49,10 +49,10 @@ app.use(express.json());
 //   })
 // );
 
-// app.use(cors({
-//   origin: process.env.CLIENT_URL,
-//   credentials: true
-// }));
+app.use(cors({
+  origin: process.env.CLIENT_URL,
+  credentials: true
+}));
 
 // app.use(cors({
 //   origin: "https://dashboard.minderytech.com",
@@ -60,12 +60,12 @@ app.use(express.json());
 // }));
 //  app.use(cors())
 
-app.use(cors({
-  origin: [
-    "https://dashboard.minderytech.com",
-    "https://organization.minderytech.com"  ],
-  credentials: true,
-}));
+// app.use(cors({
+//   origin: [
+//     "https://dashboard.minderytech.com",
+//     "https://organization.minderytech.com"  ],
+//   credentials: true,
+// }));
 
 
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
