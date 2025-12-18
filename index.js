@@ -55,7 +55,7 @@ app.use(express.json());
 // }));
 
 
-const allowedOrigins = process.env.CLIENT_URLS.split(",");
+const allowedOrigins = process.env.CLIENT_URL.split(",");
 
 app.use(cors({
   origin: function (origin, callback) {
