@@ -49,10 +49,28 @@ app.use(express.json());
 //   })
 // );
 
+// app.use(cors({
+//   origin: process.env.CLIENT_URL,
+//   credentials: true
+// }));
+
+
+const allowedOrigins = process.env.CLIENT_URLS.split(",");
+
 app.use(cors({
-  origin: process.env.CLIENT_URL,
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true); // allow Postman / server calls
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    console.log("❌ Blocked by CORS:", origin);
+    return callback(new Error("Not allowed by CORS"));
+  },
   credentials: true
 }));
+
 
 // app.use(cors({
 //   origin: "https://dashboard.minderytech.com",
