@@ -3,6 +3,8 @@ import mongoose from "mongoose";
 import dotenv from "dotenv";
 import cors from "cors";
 import jwt from "jsonwebtoken";
+console.log("CLIENT_URL AT RUNTIME =", process.env.CLIENT_URL);
+
 
 import authRoutes from "./routes/auth.js";
 import sessionRoutes from "./routes/sessionRoutes.js";
