@@ -55,25 +55,30 @@ app.use(express.json());
 // }));
 
 
-const allowedOrigins = process.env.CLIENT_URL.split(",");
+const allowedOrigins = process.env.CLIENT_URL
+  ? process.env.CLIENT_URL.split(",")
+  : [];
 
-app.use(cors({
+const corsOptions = {
   origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
+    if (!origin) return callback(null, true); // Postman / server calls
 
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
 
     console.log("❌ Blocked by CORS:", origin);
-    return callback(new Error("Not allowed by CORS"));
+    return callback(null, false); // ⬅️ IMPORTANT: do NOT throw error
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"]
-}));
+};
 
-app.options("*", cors());
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions)); // ⬅️ USE SAME OPTIONS
+
+
 
 
 
