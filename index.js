@@ -49,33 +49,33 @@ app.use(express.json());
 //   })
 // );
 
-// app.use(cors({
-//   origin: process.env.CLIENT_URL,
-//   credentials: true
-// }));
+app.use(cors({
+  origin: process.env.CLIENT_URL,
+  credentials: true
+}));
 
 
-const allowedOrigins = process.env.CLIENT_URL
-  ? process.env.CLIENT_URL.split(",")
-  : [];
+// const allowedOrigins = process.env.CLIENT_URL
+//   ? process.env.CLIENT_URL.split(",")
+//   : [];
 
-const corsOptions = {
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true); // Postman / server calls
+// const corsOptions = {
+//   origin: function (origin, callback) {
+//     if (!origin) return callback(null, true); // Postman / server calls
 
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
+//     if (allowedOrigins.includes(origin)) {
+//       return callback(null, true);
+//     }
 
-    console.log("❌ Blocked by CORS:", origin);
-    return callback(null, false); // ⬅️ IMPORTANT: do NOT throw error
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
-};
+//     console.log("❌ Blocked by CORS:", origin);
+//     return callback(null, false); // ⬅️ IMPORTANT: do NOT throw error
+//   },
+//   credentials: true,
+//   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+//   allowedHeaders: ["Content-Type", "Authorization"]
+// };
 
-app.use(cors(corsOptions));
+// app.use(cors(corsOptions));
 
 
 
