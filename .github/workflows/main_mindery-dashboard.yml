@@ -52,4 +52,4 @@ jobs:
           app-name: 'mindery-dashboard'
           slot-name: 'Production'
           package: .
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_FAD40D726FCE4D49A722588FD1EB26DB }}
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_8CAD2CCFC1024E568B5B5E87AEC4937B }}
