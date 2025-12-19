@@ -28,73 +28,46 @@ dotenv.config();
 
 const app = express();
 app.use(express.json());
-// const allowedOrigins = [
-//   "http://localhost:3000",
-//   "http://localhost:5173",
-//   "http://localhost:5174",
-//   "https://dashboard.minderytech.com",
-//   "https://minderytech.com"
-// ];
 
-// app.use(
-//   cors({
-//     origin: function (origin, callback) {
-//       if (!origin) return callback(null, true); // Allow non-browser tools like Postman
-//       if (allowedOrigins.includes(origin)) {
-//         callback(null, true);
-//       } else {
-//         console.log("❌ Blocked by CORS:", origin);
-//         callback(new Error("CORS not allowed for this origin"), false);
-//       }
-//     },
-//     credentials: true,
-//   })
-// );
+const allowedOrigins = process.env.CLIENT_URL
+  ? process.env.CLIENT_URL.split(",")
+  : [];
 
 app.use(cors({
-  origin: process.env.CLIENT_URL,
-  credentials: true
+  origin: function (origin, callback) {
+    // Allow server-to-server, Postman, curl
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    console.log("❌ CORS blocked origin:", origin);
+    return callback(null, false);
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
+
+// IMPORTANT: allow preflight
+app.options("*", cors({
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    console.log("❌ CORS blocked preflight:", origin);
+    return callback(null, false);
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
 
-// const allowedOrigins = process.env.CLIENT_URL
-//   ? process.env.CLIENT_URL.split(",")
-//   : [];
-
-// const corsOptions = {
-//   origin: function (origin, callback) {
-//     if (!origin) return callback(null, true); // Postman / server calls
-
-//     if (allowedOrigins.includes(origin)) {
-//       return callback(null, true);
-//     }
-
-//     console.log("❌ Blocked by CORS:", origin);
-//     return callback(null, false); // ⬅️ IMPORTANT: do NOT throw error
-//   },
-//   credentials: true,
-//   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-//   allowedHeaders: ["Content-Type", "Authorization"]
-// };
-
-// app.use(cors(corsOptions));
-
-
-
-
-
-// app.use(cors({
-//   origin: "https://dashboard.minderytech.com",
-//   credentials: true,
-// }));
-//  app.use(cors())
-
-// app.use(cors({
-//   origin: [
-//     "https://dashboard.minderytech.com",
-//     "https://organization.minderytech.com"  ],
-//   credentials: true,
-// }));
 
 
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
